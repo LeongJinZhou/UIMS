@@ -411,3 +411,26 @@ export class TimetableService {
     semesterId: string,
   ): Promise<boolean> {
     // Placeholder - in reality would check:
+    // 1. Get all students enrolled in this course offering
+    // 2. Check their other enrolments for time conflicts
+    // 3. Check prerequisite relationships that might cause conflicts
+    // For now, return false (no conflicts detected in simplified version)
+    return false;
+  }
+
+  findAll() {
+    return { module: 'Timetable Generator', status: 'ready' };
+  }
+
+  /**
+   * Check for student conflicts (simplified)
+   * In reality, this would check enrolments and prerequisite conflicts
+   */
+  async checkStudentConflicts(
+    courseOfferingId: string,
+    dayOfWeek: number,
+    startTime: string,
+    endTime: string,
+    semesterId: string,
+  ): Promise<boolean> {
+    // Placeholder - in reality would check:
