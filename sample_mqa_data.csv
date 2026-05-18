@@ -1,0 +1,13 @@
+programmeCode,version,semesterNumber,courseCode,isElective
+BCS,2025-v1,1,COMP101,false
+BCS,2025-v1,1,MATH101,false
+BCS,2025-v1,1,ENG101,false
+BCS,2025-v1,1,COMP102,true
+BCS,2025-v1,2,COMP201,false
+BCS,2025-v1,2,MATH201,false
+BCS,2025-v1,2,PHYS101,false
+BCS,2025-v1,2,STAT101,true
+BCS,2025-v1,3,COMP301,false
+BCS,2025-v1,3,COMP302,false
+BCS,2025-v1,3,ECON101,false
+BCS,2025-v1,3,MGMT101,true
