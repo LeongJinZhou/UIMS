@@ -551,6 +551,62 @@ model RetakeSemesterRevision {
 }
 
 // =============================================
+// M06: Exam & Results (continued)
+// =============================================
+
+model ExamTimetable {
+  id            String   @id @default(cuid())
+  semesterId    String
+  status        ExamTimetableStatus @default(DRAFT)
+  generatedAt   DateTime @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+
+  semester      Semester @relation(fields: [semesterId], references: [id])
+  slots         ExamTimetableSlot[]
+
+  @@map("exam_timetables")
+}
+
+model ExamTimetableSlot {
+  id              String   @id @default(cuid())
+  examTimetableId String
+  courseOfferingId String
+  venueId         String
+  invigilatorId   String
+  date            DateTime // YYYY-MM-DD stored as DateTime
+  startTime       String   // HH:MM format
+  endTime         String   // HH:MM format
+  durationMinutes Int
+  expectedAttendance Int
+  status          SlotStatus @default(SCHEDULED)
+
+  examTimetable   ExamTimetable @relation(fields: [examTimetableId], references: [id])
+  courseOffering  CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  venue           Venue @relation(fields: [venueId], references: [id])
+  invigilator     Lecturer @relation(fields: [invigilatorId], references: [id])
+
+  @@map("exam_timetable_slots")
+}
+
+enum ExamTimetableStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHED
+}
+
+enum SlotStatus {
+  SCHEDULED
+  CANCELLED
+  RESCHEDULED
+}
+
+// =============================================
+// M07: Enrolment & Registration
+// =============================================
+
+// =============================================
 // M07: Enrolment & Registration
 // =============================================
 

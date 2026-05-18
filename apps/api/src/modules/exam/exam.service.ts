@@ -7,7 +7,7 @@ export class ExamService {
 
   /**
    * Schedule examinations for a semester based on course offerings
-   * This is a simplified implementation - in reality would involve complex scheduling algorithms
+   * This implementation includes venue allocation and invigilator assignment
    */
   async scheduleExaminations(semesterId: string): Promise<any> {
     // Get semester with course offerings
@@ -31,27 +31,579 @@ export class ExamService {
       throw new NotFoundException(`Semester not found: ${semesterId}`);
     }
 
-    // For now, return a placeholder response indicating the service is ready
-    // In a full implementation, this would:
-    // 1. Analyze course offerings and timetables to determine exam periods
-    // 2. Schedule exams avoiding conflicts (same student having two exams at same time)
-    // 3. Allocate venues based on expected student count and exam type
-    // 4. Assign invigilators
-    // 5. Create exam timetable
+    // Get all venues/rooms for allocation
+    const venues = await this.prisma.venue.findMany({
+      include: {
+        rooms: {
+          include: {
+            equipment: true,
+          },
+          where: { isActive: true },
+        },
+      },
+      where: { isActive: true },
+    });
+
+    // Get all lecturers for invigilator assignment
+    const lecturers = await this.prisma.lecturer.findMany({
+      include: {
+        user: true,
+      },
+      where: { isActive: true },
+    });
+
+    // Create examination timetable entity
+    const examTimetable = await this.prisma.examTimetable.create({
+      data: {
+        semesterId,
+        generatedAt: new Date(),
+        status: 'DRAFT',
+      },
+    });
+
+    // Schedule examinations with venue allocation and invigilator assignment
+    const scheduledExams = await this.scheduleExamsWithAllocation(
+      semester.courseOfferings,
+      venues,
+      lecturers,
+      examTimetable.id
+    );
+
+    // Create exam timetable slots in the database
+    const createdSlots = [];
+    for (const examSlot of scheduledExams) {
+      const createdSlot = await this.prisma.examTimetableSlot.create({
+        data: {
+          examTimetableId: examTimetable.id,
+          courseOfferingId: examSlot.courseOfferingId,
+          venueId: examSlot.venueId,
+          invigilatorId: examSlot.invigilatorId,
+          date: new Date(examSlot.date), // Convert string to Date
+          startTime: examSlot.startTime,
+          endTime: examSlot.endTime,
+          durationMinutes: examSlot.durationMinutes,
+          expectedAttendance: examSlot.expectedAttendance,
+          status: 'SCHEDULED',
+        },
+        include: {
+          courseOffering: {
+            include: {
+              course: true,
+            },
+          },
+          venue: {
+            include: {
+              rooms: {
+                include: {
+                  equipment: true,
+                },
+              },
+            },
+          },
+          invigilator: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+      createdSlots.push(createdSlot);
+    }
+
     return {
-      message: 'Examination scheduling service ready - implement scheduling algorithm',
+      examTimetableId: examTimetable.id,
       semesterId,
       semesterLabel: semester.label,
-      courseOfferingsCount: semester.courseOfferings.length,
+      examsScheduled: createdSlots.length,
+      scheduledExams: createdSlots,
+      message: 'Examinations scheduled successfully with venue allocation and invigilator assignment',
       nextSteps: [
-        'Implement examination scheduling algorithm',
-        'Add venue allocation based on expected attendance',
-        'Implement invigilator assignment',
-        'Create examination timetable generation',
-        'Add exam timetable approval workflow',
-        'Implement exam results processing and grade calculation'
+        'Review and approve examination timetable',
+        'Monitor for conflicts and make adjustments as needed',
+        'Publish examination timetable when ready'
       ]
-    };
+    ];
+  }
+
+  /**
+   * Schedule examinations with venue allocation and invigilator assignment
+   * Uses a greedy algorithm to assign exams to time slots and venues
+   */
+  private async scheduleExamsWithAllocation(
+    courseOfferings: any[],
+    venues: any[],
+    lecturers: any[],
+    examTimetableId: string
+  ): Promise<any[]> {
+    const scheduledExams = [];
+
+    // Create lookup maps for faster access
+    const lecturerMap = new Map();
+    lecturers.forEach(lecturer => {
+      lecturerMap.set(lecturer.id, lecturer);
+    });
+
+    const venueMap = new Map();
+    venues.forEach(venue => {
+      venueMap.set(venue.id, venue);
+    });
+
+    // Track venue and lecturer schedules to prevent double-booking
+    const venueSchedule = new Map(); // venueId -> Array of {date, startTime, endTime}
+    const lecturerSchedule = new Map(); // lecturerId -> Array of {date, startTime, endTime}
+
+    // Define examination period (2 weeks after teaching period ends)
+    const examPeriodStart = new Date(); // Would normally be calculated from semester end date
+    examPeriodStart.setDate(examPeriodStart.getDate() + 14); // 2 weeks after semester end
+    const examPeriodEnd = new Date(examPeriodStart);
+    examPeriodEnd.setDate(examPeriodEnd.getDate() + 10); // 10 days for exams
+
+    // Generate date range for examination period (weekdays only)
+    const examDates = this.generateWeekdayRange(examPeriodStart, examPeriodEnd);
+
+    // Define time slots for exams (9:00-12:00 and 14:00-17:00)
+    const timeSlots = this.generateExamTimeSlots();
+
+    // Sort course offerings by expected attendance (descending) to allocate larger exams first
+    const sortedOfferings = [...courseOfferings].sort(
+      (a, b) =>
+        (b.currentEnrolment || 0) - (a.currentEnrolment || 0)
+    );
+
+    // Process each course offering
+    for (const offering of sortedOfferings) {
+      let slotFound = false;
+
+      // Try to find a suitable time slot, venue, and invigilator for this exam
+      for (const date of examDates) {
+        if (slotFound) break;
+
+        for (const timeSlot of timeSlots) {
+          if (slotFound) break;
+
+          const { startTime, endTime } = timeSlot;
+
+          // Calculate expected attendance (with buffer for absentees, etc.)
+          const expectedAttendance = Math.ceil((offering.currentEnrolment || 0) * 1.1);
+
+          // Determine exam duration based on course type
+          const durationMinutes = this.calculateExamDuration(offering);
+
+          // Find a suitable venue that meets capacity requirements
+          const suitableVenue = this.findSuitableVenue(
+            venues,
+            venueSchedule,
+            expectedAttendance,
+            date,
+            startTime,
+            endTime
+          );
+
+          if (!suitableVenue) continue;
+
+          // Find an available invigilator
+          const suitableInvigilator = this.findAvailableInvigilator(
+            lecturers,
+            lecturerSchedule,
+            date,
+            startTime,
+            endTime,
+            offering.lecturerId // Prefer not to assign the course lecturer as invigilator
+          );
+
+          if (!suitableInvigilator) continue;
+
+          // Found a suitable slot - create exam timetable slot
+          scheduledExams.push({
+            courseOfferingId: offering.id,
+            venueId: suitableVenue.id,
+            invigilatorId: suitableInvigilator.id,
+            date: date.toISOString().split('T')[0], // YYYY-MM-DD format
+            startTime,
+            endTime,
+            durationMinutes,
+            expectedAttendance
+          });
+
+          // Update schedules
+          this.updateVenueSchedule(venueSchedule, suitableVenue.id, date, startTime, endTime);
+          this.updateLecturerSchedule(lecturerSchedule, suitableInvigilator.id, date, startTime, endTime);
+
+          slotFound = true;
+        }
+      }
+
+      // If no slot found after trying all combinations, log warning but continue
+      if (!slotFound) {
+        console.warn(`Could not find suitable slot for exam of course ${offering.course.code}`);
+        // In a production system, we might want to implement constraint relaxation here
+      }
+    }
+
+    return scheduledExams;
+  }
+
+  /**
+   * Schedule examinations with venue allocation and invigilator assignment
+   * Uses a greedy algorithm to assign exams to time slots and venues
+   */
+  private async scheduleExamsWithAllocation(
+    courseOfferings: any[],
+    venues: any[],
+    lecturers: any[],
+    examTimetableId: string
+  ): Promise<any[]> {
+    const scheduledExams = [];
+
+    // Create lookup maps for faster access
+    const lecturerMap = new Map();
+    lecturers.forEach(lecturer => {
+      lecturerMap.set(lecturer.id, lecturer);
+    });
+
+    const venueMap = new Map();
+    venues.forEach(venue => {
+      venueMap.set(venue.id, venue);
+    });
+
+    // Track venue and lecturer schedules to prevent double-booking
+    const venueSchedule = new Map(); // venueId -> Array of {date, startTime, endTime}
+    const lecturerSchedule = new Map(); // lecturerId -> Array of {date, startTime, endTime}
+
+    // Define examination period (2 weeks after teaching period ends)
+    const examPeriodStart = new Date(); // Would normally be calculated from semester end date
+    examPeriodStart.setDate(examPeriodStart.getDate() + 14); // 2 weeks after semester end
+    const examPeriodEnd = new Date(examPeriodStart);
+    examPeriodEnd.setDate(examPeriodEnd.getDate() + 10); // 10 days for exams
+
+    // Generate date range for examination period (weekdays only)
+    const examDates = this.generateWeekdayRange(examPeriodStart, examPeriodEnd);
+
+    // Define time slots for exams (9:00-12:00 and 14:00-17:00)
+    const timeSlots = this.generateExamTimeSlots();
+
+    // Sort course offerings by expected attendance (descending) to allocate larger exams first
+    const sortedOfferings = [...courseOfferings].sort(
+      (a, b) =>
+        (b.currentEnrolment || 0) - (a.currentEnrolment || 0)
+    );
+
+    // Process each course offering
+    for (const offering of sortedOfferings) {
+      let slotFound = false;
+
+      // Try to find a suitable time slot, venue, and invigilator for this exam
+      for (const date of examDates) {
+        if (slotFound) break;
+
+        for (const timeSlot of timeSlots) {
+          if (slotFound) break;
+
+          const { startTime, endTime } = timeSlot;
+
+          // Calculate expected attendance (with buffer for absentees, etc.)
+          const expectedAttendance = Math.ceil((offering.currentEnrolment || 0) * 1.1);
+
+          // Determine exam duration based on course type
+          const durationMinutes = this.calculateExamDuration(offering);
+
+          // Find a suitable venue that meets capacity requirements
+          const suitableVenue = this.findSuitableVenue(
+            venues,
+            venueSchedule,
+            expectedAttendance,
+            date,
+            startTime,
+            endTime
+          );
+
+          if (!suitableVenue) continue;
+
+          // Find an available invigilator
+          const suitableInvigilator = this.findAvailableInvigilator(
+            lecturers,
+            lecturerSchedule,
+            date,
+            startTime,
+            endTime,
+            offering.lecturerId // Prefer not to assign the course lecturer as invigilator
+          );
+
+          if (!suitableInvigilator) continue;
+
+          // Found a suitable slot - create exam timetable slot
+          scheduledExams.push({
+            courseOfferingId: offering.id,
+            venueId: suitableVenue.id,
+            invigilatorId: suitableInvigilator.id,
+            date: date.toISOString().split('T')[0], // YYYY-MM-DD format
+            startTime,
+            endTime,
+            durationMinutes,
+            expectedAttendance
+          });
+
+          // Update schedules
+          this.updateVenueSchedule(venueSchedule, suitableVenue.id, date, startTime, endTime);
+          this.updateLecturerSchedule(lecturerSchedule, suitableInvigilator.id, date, startTime, endTime);
+
+          slotFound = true;
+        }
+      }
+
+      // If no slot found after trying all combinations, log warning but continue
+      if (!slotFound) {
+        console.warn(`Could not find suitable slot for exam of course ${offering.course.code}`);
+        // In a production system, we might want to implement constraint relaxation here
+      }
+    }
+
+    return scheduledExams;
+  }
+
+  /**
+   * Generate weekday range between two dates (inclusive)
+   */
+  private generateWeekdayRange(startDate: Date, endDate: Date): Date[] {
+    const dates = [];
+    let currentDate = new Date(startDate);
+
+    while (currentDate <= endDate) {
+      const dayOfWeek = currentDate.getDay(); // 0=Sunday, 1=Monday, etc.
+      // Only include weekdays (Monday to Friday)
+      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        dates.push(new Date(currentDate));
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return dates;
+  }
+
+  /**
+   * Generate time slots for exams (9:00-12:00 and 14:00-17:00)
+   */
+  private generateExamTimeSlots(): Array<{startTime: string, endTime: string}> {
+    const slots = [];
+
+    // Morning session: 9:00-12:00
+    slots.push({ startTime: '09:00', endTime: '12:00' });
+
+    // Afternoon session: 14:00-17:00
+    slots.push({ startTime: '14:00', endTime: '17:00' });
+
+    return slots;
+  }
+
+  /**
+   * Calculate exam duration based on course type and credit hours
+   */
+  private calculateExamDuration(courseOffering: any): number {
+    // Base duration: 2 hours per 3 credit hours
+    const baseHours = (courseOffering.course.creditHours || 3) * 2 / 3;
+
+    // Adjust for course type
+    let multiplier = 1.0;
+    switch (courseOffering.course.courseType) {
+      case 'LAB':
+      case 'PRACTICAL':
+        multiplier = 1.5; // Practical exams take longer
+        break;
+      case 'CLINICAL':
+        multiplier = 2.0; // Clinical exams take much longer
+        break;
+      default:
+        multiplier = 1.0; // Theory exams
+    }
+
+    return Math.ceil(baseHours * 60 * multiplier); // Convert to minutes
+  }
+
+  /**
+   * Find a suitable venue that meets capacity requirements
+   */
+  private findSuitableVenue(
+    venues: any[],
+    venueSchedule: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    requiredCapacity: number,
+    date: Date,
+    startTime: string,
+    endTime: string
+  ): any | null {
+    // Sort venues by capacity (ascending) to find the smallest suitable venue first
+    const sortedVenues = [...venues].sort((a, b) => {
+      const capacityA = a.rooms.reduce((sum, room) => sum + room.capacity, 0);
+      const capacityB = b.rooms.reduce((sum, room) => sum + room.capacity, 0);
+      return capacityA - capacityB;
+    });
+
+    const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    for (const venue of sortedVenues) {
+      // Calculate total capacity of venue
+      const totalCapacity = venue.rooms.reduce((sum, room) => sum + room.capacity, 0);
+
+      // Check if venue meets capacity requirements
+      if (totalCapacity < requiredCapacity) continue;
+
+      // Check for venue double-booking
+      if (this.hasVenueScheduleConflict(
+          venueSchedule,
+          venue.id,
+          dateString,
+          startTime,
+          endTime
+        )) {
+        continue;
+      }
+
+      // Venue is available and suitable
+      return venue;
+    }
+
+    return null;
+  }
+
+  /**
+   * Find an available invigilator
+   */
+  private findAvailableInvigilator(
+    lecturers: any[],
+    lecturerSchedule: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    date: Date,
+    startTime: string,
+    endTime: string,
+    excludeLecturerId: string | null = null
+  ): any | null {
+    const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    // Shuffle lecturers to avoid always picking the same ones
+    const shuffledLecturers = [...lecturers].sort(() => Math.random() - 0.5);
+
+    for (const lecturer of shuffledLecturers) {
+      // Skip the course lecturer if specified
+      if (excludeLecturerId && lecturer.id === excludeLecturerId) continue;
+
+      // Check for lecturer double-booking
+      if (this.hasLecturerScheduleConflict(
+          lecturerSchedule,
+          lecturer.id,
+          dateString,
+          startTime,
+          endTime
+        )) {
+        continue;
+      }
+
+      // Check if lecturer is available (not on leave, etc.)
+      // In a full implementation, we would check leave records, etc.
+      // For now, we'll assume all lecturers are available unless scheduled
+
+      // Lecturer is available and suitable
+      return lecturer;
+    }
+
+    return null;
+  }
+
+  /**
+   * Check if there's a venue schedule conflict
+   */
+  private hasVenueScheduleConflict(
+    scheduleMap: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    venueId: string,
+    date: string,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const schedule = scheduleMap.get(venueId) || [];
+
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    for (const existing of schedule) {
+      if (existing.date !== date) continue;
+
+      const [exStartHour, exStartMin] = existing.startTime.split(':').map(Number);
+      const [exEndHour, exEndMin] = existing.endTime.split(':').map(Number);
+      const exStartMinutes = exStartHour * 60 + exStartMin;
+      const exEndMinutes = exEndHour * 60 + exEndMin;
+
+      // Check for overlap
+      if (startMinutes < exEndMinutes && endMinutes > exStartMinutes) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if there's a lecturer schedule conflict
+   */
+  private hasLecturerScheduleConflict(
+    scheduleMap: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    lecturerId: string,
+    date: string,
+    startTime: string,
+    endTime: string
+  ): boolean {
+    const schedule = scheduleMap.get(lecturerId) || [];
+
+    const [startHour, startMin] = startTime.split(':').map(Number);
+    const [endHour, endMin] = endTime.split(':').map(Number);
+    const startMinutes = startHour * 60 + startMin;
+    const endMinutes = endHour * 60 + endMin;
+
+    for (const existing of schedule) {
+      if (existing.date !== date) continue;
+
+      const [exStartHour, exStartMin] = existing.startTime.split(':').map(Number);
+      const [exEndHour, exEndMin] = existing.endTime.split(':').map(Number);
+      const exStartMinutes = exStartHour * 60 + exStartMin;
+      const exEndMinutes = exEndHour * 60 + exEndMin;
+
+      // Check for overlap
+      if (startMinutes < exEndMinutes && endMinutes > exStartMinutes) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Update venue schedule
+   */
+  private updateVenueSchedule(
+    scheduleMap: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    venueId: string,
+    date: Date,
+    startTime: string,
+    endTime: string
+  ): void {
+    const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const schedule = scheduleMap.get(venueId) || [];
+    schedule.push({ date: dateString, startTime, endTime });
+    scheduleMap.set(venueId, schedule);
+  }
+
+  /**
+   * Update lecturer schedule
+   */
+  private updateLecturerSchedule(
+    scheduleMap: Map<string, Array<{date: string, startTime: string, endTime: string}>>,
+    lecturerId: string,
+    date: Date,
+    startTime: string,
+    endTime: string
+  ): void {
+    const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const schedule = scheduleMap.get(lecturerId) || [];
+    schedule.push({ date: dateString, startTime, endTime });
+    scheduleMap.set(lecturerId, schedule);
   }
 
   /**
