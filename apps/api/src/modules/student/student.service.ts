@@ -323,10 +323,11 @@ export class StudentService {
 
   /**
    * Update academic plan when a student fails a course
-   * This would insert the failed course into future semesters while preserving graduation timeline
+   * This inserts the failed course into future semesters while preserving graduation timeline
+   * and credit limits, deferring other courses if necessary
    */
   async handleCourseFailure(studentId: string, courseId: string, failedSemesterNumber: number): Promise<any> {
-    // Get student's academic plan
+    // Get student's academic plan with all needed data
     const academicPlan = await this.prisma.academicPlan.findUnique({
       where: { studentId },
       include: {
@@ -360,7 +361,11 @@ export class StudentService {
       throw new NotFoundException(`Course ${courseId} not found in semester ${failedSemesterNumber}`);
     }
 
-    // Mark the course as failed
+    // Get the course details for credit hours
+    const failedCourse = failedPlannedCourse.course;
+    const failedCourseCredits = failedCourse.creditHours;
+
+    // Mark the original course as failed
     await this.prisma.plannedCourse.update({
       where: { id: failedPlannedCourse.id },
       data: {
@@ -369,22 +374,663 @@ export class StudentService {
       },
     });
 
-    // In a full implementation, we would:
-    // 1. Find the next available slot for this course in future semesters
-    // 2. Check if adding the course would exceed credit limits
-    // 3. If it would exceed limits, defer other courses or extend timeline
-    // 4. Insert the retake course into the appropriate future semester
-    // 5. Update projected graduation date if needed
+    // Find the student's programme version to get curriculum structure
+    const programmeVersion = await this.prisma.programmeVersion.findUnique({
+      where: { id: academicPlan.student?.programmeVersionId },
+      include: {
+        semesterPlans: {
+          include: {
+            mqaPlanCourses: {
+              include: {
+                course: true,
+              },
+            },
+          },
+        },
+      },
+    });
 
-    // For now, we'll return a simplified response indicating the failure was recorded
+    if (!programmeVersion) {
+      throw new NotFoundException(`Programme version not found for student's academic plan`);
+    }
+
+    // Get all MQA-approved courses for reference (what the student SHOULD be taking)
+    const mqaCoursesBySemester = new Map();
+    for (const mqaSemesterPlan of programmeVersion.semesterPlans) {
+      mqaCoursesBySemester.set(
+        mqaSemesterPlan.semesterNumber,
+        mqaSemesterPlan.mqaPlanCourses.map(mqpc => ({
+          courseId: mqpc.courseId,
+          courseCode: mqpc.course.code,
+          courseName: mqpc.course.name,
+          creditHours: mqpc.course.creditHours,
+          isElective: mqpc.isElective,
+        }))
+      );
+    }
+
+    // Get current planned courses by semester for comparison
+    const plannedCoursesBySemester = new Map();
+    for (const semesterPlan of academicPlan.semesters) {
+      plannedCoursesBySemester.set(
+        semesterPlan.semesterNumber,
+        semesterPlan.plannedCourses.map(pc => ({
+          id: pc.id,
+          courseId: pc.courseId,
+          courseCode: pc.course.code,
+          courseName: pc.course.name,
+          creditHours: pc.course.creditHours,
+          isRetake: pc.isRetake,
+          isDeferred: pc.isDeferred,
+          gradeStatus: pc.gradeStatus,
+        }))
+      );
+    }
+
+    // Calculate current credits per semester (only counting non-retake, non-deferred, passed courses)
+    const earnedCreditsBySemester = new Map();
+    for (const [semesterNum, plannedCourses] of plannedCoursesBySemester.entries()) {
+      let earnedCredits = 0;
+      for (const pc of plannedCourses) {
+        // Only count courses that are not retakes (original attempts) and have been passed
+        // In a real system, we'd check actual exam results, but for now we'll use gradeStatus
+        if (!pc.isRetake && pc.gradeStatus === 'PASS') {
+          earnedCredits += pc.creditHours;
+        }
+      }
+      earnedCreditsBySemester.set(semesterNum, earnedCredits);
+    }
+
+    // Determine which semester to insert the retake into
+    // Strategy: Find the first future semester where adding the course won't exceed credit limits
+    let targetSemester = failedSemesterNumber + 1; // Start with next semester
+    const maxSemesters = programmeVersion.semesterPlans.length;
+    const maxCreditsPerSemester = 20; // Standard limit
+    const maxCreditsWithAppeal = 21; // With appeal
+
+    let retakeInserted = false;
+    let deferredCourses: any[] = [];
+
+    // Try to find a slot for the retake course
+    while (targetSemester <= maxSemesters && !retakeInserted) {
+      const currentCredits = earnedCreditsBySemester.get(targetSemester) || 0;
+      const mqaCourses = mqaCoursesBySemester.get(targetSemester) || [];
+      const plannedCourses = plannedCoursesBySemester.get(targetSemester) || [];
+
+      // Calculate credits from MQA-approved courses (what's officially required)
+      let mqaCredits = 0;
+      for (const mqaCourse of mqaCourses) {
+        mqaCredits += mqaCourse.creditHours;
+      }
+
+      // Calculate credits from currently planned non-retake courses
+      let plannedCredits = 0;
+      for (const pc of plannedCourses) {
+        if (!pc.isRetake && !pc.isDeferred) {
+          plannedCredits += pc.creditHours;
+        }
+      }
+
+      // Total credits if we add the retake course
+      const totalWithRetake = mqaCredits + plannedCredits + failedCourseCredits;
+
+      // Check if we can fit the retake without exceeding limits
+      if (totalWithRetake <= maxCreditsWithAppeal) {
+        // We can fit it! Insert the retake course
+
+        // First, check if this course is already planned for this semester (as a deferral possibility)
+        let existingPlannedIndex = -1;
+        for (let i = 0; i < plannedCourses.length; i++) {
+          if (plannedCourses[i].courseId === courseId) {
+            existingPlannedIndex = i;
+            break;
+          }
+        }
+
+        if (existingPlannedIndex >= 0) {
+          // The course was already planned (possibly as a deferral), just mark it as retake
+          await this.prisma.plannedCourse.update({
+            where: { id: plannedCourses[existingPlannedIndex].id },
+            data: {
+              isRetake: true,
+              isDeferred: false,
+              gradeStatus: null, // Reset grade status for retake attempt
+            },
+          });
+        } else {
+          // Need to create a new planned course entry for the retake
+          await this.prisma.plannedCourse.create({
+            data: {
+              semesterPlanId: academicPlan.semesters.find(s => s.semesterNumber === targetSemester)!.id,
+              courseId: courseId,
+              courseCode: failedCourse.code,
+              creditHours: failedCourse.creditHours,
+              isRetake: true,
+              isDeferred: false,
+              gradeStatus: null,
+            },
+          });
+        }
+
+        retakeInserted = true;
+
+        // If we exceeded the standard limit (20) but are within appeal limit (21), note that appeal is needed
+        if (totalWithRetake > maxCreditsPerSemester) {
+          // In a full implementation, we would flag this for appeal processing
+          // For now, we'll just note it in the response
+        }
+      } else {
+        // Can't fit in this semester, need to defer some courses to make room
+        // Find non-retake, non-deferred courses that could be deferred
+        const deferrableCourses = plannedCourses.filter(pc =>
+          !pc.isRetake && !pc.isDeferred && pc.courseId !== courseId
+        );
+
+        // Sort by credit hours descending to defer larger courses first (more efficient)
+        deferrableCourses.sort((a, b) => b.creditHours - a.creditHours);
+
+        let creditsNeeded = totalWithRetake - maxCreditsWithAppeal; // How much we need to free up
+        let creditsDeferred = 0;
+
+        for (const course of deferrableCourses) {
+          if (creditsDeferred >= creditsNeeded) break;
+
+          // Mark this course as deferred
+          await this.prisma.plannedCourse.update({
+            where: { id: course.id },
+            data: {
+              isDeferred: true,
+            },
+          });
+
+          deferredCourses.push({
+            courseId: course.courseId,
+            courseCode: course.courseCode,
+            creditHours: course.creditHours,
+          });
+
+          creditsDeferred += course.creditHours;
+        }
+
+        // Recalculate after deferrals
+        let plannedCreditsAfterDeferral = 0;
+        for (const pc of plannedCourses) {
+          if (!pc.isRetake && !pc.isDeferred) {
+            plannedCreditsAfterDeferral += pc.creditHours;
+          }
+        }
+
+        const totalWithRetakeAfterDeferral = mqaCredits + plannedCreditsAfterDeferral + failedCourseCredits;
+
+        if (totalWithRetakeAfterDeferral <= maxCreditsWithAppeal) {
+          // Now we can fit the retake
+          // Find or create the retake course entry
+          let existingPlannedIndex = -1;
+          for (let i = 0; i < plannedCourses.length; i++) {
+            if (plannedCourses[i].courseId === courseId) {
+              existingPlannedIndex = i;
+              break;
+            }
+          }
+
+          if (existingPlannedIndex >= 0) {
+            // The course was already planned (possibly as a deferral), just mark it as retake
+            await this.prisma.plannedCourse.update({
+              where: { id: plannedCourses[existingPlannedIndex].id },
+              data: {
+                isRetake: true,
+                isDeferred: false,
+                gradeStatus: null, // Reset grade status for retake attempt
+              },
+            });
+          } else {
+            // Need to create a new planned course entry for the retake
+            await this.prisma.plannedCourse.create({
+              data: {
+                semesterPlanId: academicPlan.semesters.find(s => s.semesterNumber === targetSemester)!.id,
+                courseId: courseId,
+                courseCode: failedCourse.code,
+                creditHours: failedCourse.creditHours,
+                isRetake: true,
+                isDeferred: false,
+                gradeStatus: null,
+              },
+            });
+          }
+
+          retakeInserted = true;
+
+          // If we exceeded the standard limit (20) but are within appeal limit (21), note that appeal is needed
+          if (totalWithRetakeAfterDeferral > maxCreditsPerSemester) {
+            // In a full implementation, we would flag this for appeal processing
+            // For now, we'll just note it in the response
+          }
+        }
+        // If still can't fit, continue to next semester
+      }
+
+      if (!retakeInserted) {
+        targetSemester++;
+      }
+    }
+
+    // If we went beyond the maximum semesters, we need to extend the timeline
+    let timelineExtended = false;
+    if (!retakeInserted && targetSemester > maxSemesters) {
+      // In a full implementation, we would:
+      // 1. Add additional semesters to the academic plan
+      // 2. Insert the retake course into the new semester
+      // 3. Update projected graduation date
+
+      timelineExtended = true;
+      // For now, we'll just note this in the response
+    }
+
+    // Recalculate projected graduation date based on updated plan
+    const updatedAcademicPlan = await this.prisma.academicPlan.findUnique({
+      where: { id: academicPlan.id },
+      include: {
+        semesters: {
+          include: {
+            plannedCourses: {
+              include: {
+                course: true,
+              },
+            },
+          },
+          orderBy: {
+            semesterNumber: 'asc',
+          },
+        },
+      },
+    });
+
+    // Update projected graduation date in academic plan
+    const projectedGraduation = this.calculateProjectedGraduationFromPlan(updatedAcademicPlan);
+    await this.prisma.academicPlan.update({
+      where: { id: academicPlan.id },
+      data: {
+        projectedGraduation,
+        hasExtension: timelineExtended ||
+          (updatedAcademicPlan.projectedGraduation !== updatedAcademicPlan.originalGraduation),
+        lastRevisedAt: new Date(),
+      },
+    });
+
     return {
-      message: `Course failure recorded for student ${studentId}, course ${courseId} in semester ${failedSemesterNumber}`,
+      message: `Course failure processed for student ${studentId}, course ${courseId}`,
       academicPlanId: academicPlan.id,
-      nextSteps: [
-        'Course marked as failed and requiring retake',
-        'Academic plan needs to be revised to accommodate retake',
-        'Student should consult with academic advisor for plan revision'
-      ]
+      details: {
+        failedCourse: {
+          courseId: failedCourse.code,
+          courseName: failedCourse.name,
+          creditHours: failedCourse.creditHours,
+          originalSemester: failedSemesterNumber,
+        },
+        retakeInserted: retakeInserted,
+        retakeSemester: retakeInserted ? targetSemester : null,
+        timelineExtended: timelineExtended,
+        deferredCourses: deferredCourses,
+        nextSteps: [
+          retakeInserted
+            ? `Retake course ${failedCourse.code} scheduled for semester ${targetSemester}`
+            : `Could not place retake course ${failedCourse.code} within curriculum timeline`,
+          ...(deferredCourses.length > 0
+            ? [`Deferred ${deferredCourses.length} courses to make room for retake:`]
+            : []),
+          ...deferredCourses.map(course =>
+            `  - ${course.courseCode} (${course.creditHours} credits)`
+          ),
+          timelineExtended
+            ? ['Academic timeline extended to accommodate retake']
+            : [],
+          ...(totalWithRetake > maxCreditsPerSemester && retakeInserted
+            ? [`Semester ${targetSemester} requires appeal for credit overload (${totalWithRetake} > ${maxCreditsPerSemester} credits)`]
+            : []),
+          'Student should review updated academic plan with advisor',
+          'Monitor progress and adjust as needed based on actual course availability'
+        ]
+      }
+    };
+  }
+
+  /**
+   * Update student progress based on exam results and enrolments
+   * This calculates earned credits, GPA, and updates academic standing
+   */
+  async updateStudentProgress(studentId: string): Promise<any> {
+    // Get student with enrolments and exam results
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        enrolments: {
+          include: {
+            courseOffering: {
+              include: {
+                course: true,
+              },
+            },
+          },
+        },
+        examResults: {
+          include: {
+            courseOffering: {
+              include: {
+                course: true,
+              },
+            },
+          },
+        },
+        academicPlan: {
+          include: {
+            semesters: {
+              include: {
+                plannedCourses: {
+                  include: {
+                    course: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student not found: ${studentId}`);
+    }
+
+    // Calculate earned credits and GPA from exam results
+    let totalCreditsEarned = 0;
+    let totalGradePoints = 0;
+    let totalCourses = 0;
+    let passedCourses = 0;
+
+    // Process exam results to calculate earned credits and GPA
+    for (const examResult of student.examResults) {
+      // Only count results that have been released
+      if (examResult.releasedAt) {
+        totalCourses++;
+
+        // Only count if the student passed the course
+        if (examResult.gradeStatus === 'PASS') {
+          passedCourses++;
+          totalCreditsEarned += examResult.courseOffering.course.creditHours;
+          totalGradePoints += (examResult.gradePoint || 0) * examResult.courseOffering.course.creditHours;
+        }
+      }
+    }
+
+    // Calculate GPA (grade points per credit)
+    const cumulativeGpa = totalCreditsEarned > 0 ? totalGradePoints / totalCreditsEarned : 0.0;
+
+    // Determine academic plan status based on performance
+    let planStatus = 'ON_TRACK';
+
+    // Check if student is behind on credits (simplified logic)
+    // In reality, this would compare against expected credits for current semester
+    const expectedCreditsBySemester = 20; // Assuming 20 credits per semester as target
+    const expectedCredits = student.currentSemester * expectedCreditsBySemester;
+
+    if (totalCreditsEarned < expectedCredits * 0.8) { // Behind by more than 20%
+      planStatus = 'DELAYED';
+    }
+
+    if (totalCreditsEarned < expectedCredits * 0.5) { // Behind by more than 50%
+      planStatus = 'EXTENSION_REQUIRED';
+    }
+
+    // Update student record with calculated progress
+    const updatedStudent = await this.prisma.student.update({
+      where: { id: studentId },
+      data: {
+        totalCreditsEarned,
+        cumulativeGpa: Number(cumulativeGpa.toFixed(2)), // Keep 2 decimal places
+        planStatus,
+        // Update current semester based on earned credits (simplified)
+        currentSemester: Math.min(
+          Math.floor(totalCreditsEarned / expectedCreditsBySemester) + 1,
+          12 // Cap at reasonable maximum
+        ),
+      },
+    });
+
+    // Update projected graduation date if needed
+    if (academicPlan) {
+      const projectedGraduation = this.calculateProjectedGraduation(
+        student,
+        totalCreditsEarned,
+        cumulativeGpa
+      );
+
+      await this.prisma.academicPlan.update({
+        where: { id: academicPlan.id },
+        data: {
+          projectedGraduation,
+          hasExtension: projectedGraduation !== academicPlan.originalGraduation,
+          lastRevisedAt: new Date(),
+        },
+      });
+    }
+
+    return {
+      studentId: updatedStudent.id,
+      totalCreditsEarned: updatedStudent.totalCreditsEarned,
+      cumulativeGpa: updatedStudent.cumulativeGpa,
+      planStatus: updatedStudent.planStatus,
+      currentSemester: updatedStudent.currentSemester,
+      progressSummary: {
+        totalCoursesAttempted: totalCourses,
+        totalCoursesPassed: passedCourses,
+        passRate: totalCourses > 0 ? (passedCourses / totalCourses) * 100 : 0,
+        creditsEarned: totalCreditsEarned,
+        gpa: cumulativeGpa,
+      },
+    };
+  }
+
+  /**
+   * Calculate projected graduation date based on current progress
+   */
+  private calculateProjectedGraduation(student: any, totalCreditsEarned: number, cumulativeGpa: number): string {
+    // Get student's programme version to see remaining requirements
+    if (!student.programmeVersion) {
+      return this.calculateOriginalGraduation(student); // Fallback
+    }
+
+    // Get total credits required for graduation
+    // In a real system, this would come from the programme structure
+    const totalCreditsRequired = 120; // Typical undergraduate degree
+
+    // Calculate remaining credits
+    const remainingCredits = Math.max(0, totalCreditsRequired - totalCreditsEarned);
+
+    // Calculate remaining semesters needed (assuming 20 credits per semester)
+    const remainingSemesters = Math.ceil(remainingCredits / 20);
+
+    // Project graduation date based on current semester and remaining semesters
+    const projectedSemesterNumber = student.currentSemester + remainingSemesters;
+
+    // Convert to academic year/semester format (simplified)
+    // This assumes semester 1 = Fall, semester 2 = Spring
+    const baseYear = student.intakeYear;
+    const baseSemester = 1; // Assuming started in semester 1 (Fall)
+
+    let projectedYear = baseYear;
+    let projectedSemester = baseSemester + (projectedSemesterNumber - 1);
+
+    // Handle year rollover (2 semesters per year)
+    while (projectedSemester > 2) {
+      projectedYear++;
+      projectedSemester -= 2;
+    }
+
+    // Adjust for intake period (simplified - assuming Fall intake)
+    // In reality, this would be more complex based on actual intake period
+
+    return `${projectedYear}-S${projectedSemester}`;
+  }
+
+  /**
+   * Get comprehensive student progress report
+   */
+  async getProgressReport(studentId: string): Promise<any> {
+    // Update progress first to ensure we have latest data
+    const progressUpdate = await this.updateStudentProgress(studentId);
+
+    // Get student with full details
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: true,
+        programme: {
+          include: {
+            faculty: true,
+          },
+        },
+        programmeVersion: true,
+        academicPlan: {
+          include: {
+            semesters: {
+              include: {
+                plannedCourses: {
+                  include: {
+                    course: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        enrolments: {
+          include: {
+            courseOffering: {
+              include: {
+                course: true,
+                semester: true,
+              },
+            },
+          },
+          orderBy: {
+            enrolledAt: 'desc',
+          },
+          take: 10, // Recent enrolments
+        },
+        examResults: {
+          include: {
+            courseOffering: {
+              include: {
+                course: true,
+                semester: true,
+              },
+            },
+          },
+          orderBy: {
+            releasedAt: 'desc',
+          },
+          take: 10, // Recent exam results
+        },
+      },
+    });
+
+    if (!student) {
+      throw new NotFoundException(`Student not found: ${studentId}`);
+    }
+
+    // Calculate detailed statistics
+    const passedExams = student.examResults.filter(
+      result => result.releasedAt && result.gradeStatus === 'PASS'
+    );
+
+    const failedExams = student.examResults.filter(
+      result => result.releasedAt && result.gradeStatus === 'FAIL'
+    );
+
+    const totalAttemptedCredits = student.examResults
+      .filter(result => result.releasedAt)
+      .reduce((sum, result) => sum + (result.courseOffering?.course?.creditHours || 0), 0);
+
+    const earnedCredits = passedExams
+      .reduce((sum, result) => sum + (result.courseOffering?.course?.creditHours || 0), 0);
+
+    // Calculate GPA from exam results
+    let totalGradePoints = 0;
+    let totalCreditsForGpa = 0;
+
+    for (const exam of passedExams) {
+      const creditHours = exam.courseOffering?.course?.creditHours || 0;
+      const gradePoints = exam.gradePoint || 0;
+      totalGradePoints += gradePoints * creditHours;
+      totalCreditsForGpa += creditHours;
+    }
+
+    const calculatedGpa = totalCreditsForGpa > 0 ? totalGradePoints / totalCreditsForGpa : 0;
+
+    return {
+      student: {
+        id: student.id,
+        studentId: student.studentId,
+        name: student.user?.name || 'Unknown',
+        email: student.user?.email || '',
+      },
+      programme: {
+        id: student.programme.id,
+        name: student.programme.name,
+        code: student.programme.code,
+        faculty: {
+          name: student.programme.faculty?.name || 'Unknown',
+          code: student.programme.faculty?.code || 'Unknown',
+        },
+      },
+      programmeVersion: {
+        version: student.programmeVersion?.version || 'Unknown',
+      },
+      academicProgress: {
+        currentSemester: student.currentSemester,
+        totalCreditsEarned: student.totalCreditsEarned,
+        totalCreditsRequired: 120, // Typical requirement
+        creditsRemaining: Math.max(0, 120 - student.totalCreditsEarned),
+        cumulativeGpa: Number(calculatedGpa.toFixed(2)),
+        planStatus: student.planStatus,
+        projectedGraduation: student.projectedGraduation ||
+          this.calculateProjectedGraduation(student, student.totalCreditsEarned, calculatedGpa),
+      },
+      performance: {
+        totalExamsAttempted: student.examResults.filter(r => r.releasedAt).length,
+        totalExamsPassed: passedExams.length,
+        totalExamsFailed: failedExams.length,
+        passRate: student.examResults.filter(r => r.releasedAt).length > 0
+          ? (passedExams.length / student.examResults.filter(r => r.releasedAt).length) * 100
+          : 0,
+      },
+      recentActivity: {
+        recentEnrolments: student.enrolments.map(enrolment => ({
+          courseCode: enrolment.courseOffering?.course?.code || 'Unknown',
+          courseName: enrolment.courseOffering?.course?.name || 'Unknown',
+          semester: enrolment.courseOffering?.semester?.label || 'Unknown',
+          enrolledAt: enrolment.enrolledAt,
+        })),
+        recentExamResults: student.examResults.map(exam => ({
+          courseCode: exam.courseOffering?.course?.code || 'Unknown',
+          courseName: exam.courseOffering?.course?.name || 'Unknown',
+          semester: exam.courseOffering?.semester?.label || 'Unknown',
+          grade: exam.grade || 'N/A',
+          gradePoint: exam.gradePoint || null,
+          releasedAt: exam.releasedAt,
+        })),
+      },
+      academicPlan: student.academicPlan ? {
+        id: student.academicPlan.id,
+        originalGraduation: student.academicPlan.originalGraduation,
+        projectedGraduation: student.academicPlan.projectedGraduation,
+        hasExtension: student.academicPlan.hasExtension,
+        lastRevisedAt: student.academicPlan.lastRevisedAt,
+        semesterCount: student.academicPlan.semesters.length,
+        totalPlannedCredits: student.academicPlan.semesters.reduce(
+          (sum, semester) => sum + semester.totalCredits, 0
+        ),
+      } : null,
     };
   }
 

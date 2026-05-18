@@ -50,4 +50,14 @@ export class StudentController {
       body.failedSemesterNumber
     );
   }
+
+  @Post(':studentId/update-progress')
+  async updateStudentProgress(@Param('studentId') studentId: string) {
+    return this.studentService.updateStudentProgress(studentId);
+  }
+
+  @Get(':studentId/progress')
+  async getProgressReport(@Param('studentId') studentId: string) {
+    return this.studentService.getProgressReport(studentId);
+  }
 }
