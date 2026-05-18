@@ -104,4 +104,49 @@ export class VenueController {
       body.scheduledBy
     );
   }
+
+  @Get('rooms/:roomId/maintenance')
+  async getRoomMaintenanceSchedule(
+    @Param('roomId') roomId: string,
+    @Body() body: {
+      startDate?: string;
+      endDate?: string;
+    }
+  ) {
+    return this.venueService.getRoomMaintenanceSchedule(
+      roomId,
+      body.startDate,
+      body.endDate
+    );
+  }
+
+  @Get('rooms/:roomId/bookings')
+  async getRoomBookingCalendar(
+    @Param('roomId') roomId: string,
+    @Body() body: {
+      startDate?: string;
+      endDate?: string;
+    }
+  ) {
+    return this.venueService.getRoomBookingCalendar(
+      roomId,
+      body.startDate,
+      body.endDate
+    );
+  }
+
+  @Post('rooms/bookings/:bookingId/cancel')
+  async cancelRoomBooking(
+    @Param('bookingId') bookingId: string,
+    @Body() body: {
+      reason: string;
+      cancelledBy: string;
+    }
+  ) {
+    return this.venueService.cancelRoomBooking(
+      bookingId,
+      body.reason,
+      body.cancelledBy
+    );
+  }
 }

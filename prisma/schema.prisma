@@ -470,6 +470,28 @@ model RoomEquipment {
   @@map("room_equipment")
 }
 
+model RoomBooking {
+  id        String   @id @default(cuid())
+  roomId    String
+  date      DateTime // YYYY-MM-DD stored as DateTime
+  startTime String   // HH:MM format
+  endTime   String   // HH:MM format
+  purpose   String
+  bookedBy  String
+  status    BookingStatus @default(CONFIRMED)
+  createdAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@map("room_bookings")
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  PENDING
+}
+
 model MaintenanceBlock {
   id        String   @id @default(cuid())
   roomId    String
