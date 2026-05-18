@@ -1,0 +1,847 @@
+// ============================================
+// UIMS Database Schema
+// University — Integrated Management System
+// ============================================
+// Covers all 10 system modules:
+//   M01: Programme & MQA Repository
+//   M02: Student Academic Profile
+//   M03: Course & Prerequisite Engine
+//   M04: Timetable Generator
+//   M05: Venue & Resource Manager
+//   M06: Exam & Results
+//   M07: Enrolment & Registration
+//   M08: HR & Lecturer Management
+//   M09: Finance & Fees
+//   M10: Notifications & Appeals
+// ============================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// =============================================
+// AUTH & USERS
+// =============================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole
+  avatarUrl String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  student    Student?
+  lecturer   Lecturer?
+  notifications Notification[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  STUDENT
+  LECTURER
+  PROGRAMME_COORDINATOR
+  HEAD_OF_PROGRAMME
+  EXAM_DIVISION
+  HR
+  FINANCE
+  REGISTRY
+  ADMIN
+}
+
+// =============================================
+// M01: Programme & MQA Repository
+// =============================================
+
+model Faculty {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique  // e.g., "FOCS", "FOE", "FOM"
+  deanId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  programmes Programme[]
+  lecturers  Lecturer[]
+
+  @@map("faculties")
+}
+
+model Programme {
+  id                   String       @id @default(cuid())
+  facultyId            String
+  name                 String       // e.g., "Bachelor of Computer Science"
+  code                 String       @unique  // e.g., "BCS"
+  calendarType         CalendarType @default(STANDARD)
+  totalCredits         Int
+  maxDurationSemesters Int          // Maximum allowed semesters
+  mqaRefNumber         String?      // MQA reference number
+  isActive             Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  faculty     Faculty             @relation(fields: [facultyId], references: [id])
+  versions    ProgrammeVersion[]
+  courses     Course[]
+  students    Student[]
+
+  @@map("programmes")
+}
+
+enum CalendarType {
+  STANDARD       // Nov/Apr/Jul cycle
+  NON_STANDARD   // MBBS, Pharmacy — faculty-governed
+}
+
+model ProgrammeVersion {
+  id            String   @id @default(cuid())
+  programmeId   String
+  version       String   // e.g., "2025-v1"
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  programme    Programme        @relation(fields: [programmeId], references: [id])
+  semesterPlans MqaSemesterPlan[]
+  students     Student[]
+
+  @@unique([programmeId, version])
+  @@map("programme_versions")
+}
+
+model MqaSemesterPlan {
+  id                  String @id @default(cuid())
+  programmeVersionId  String
+  semesterNumber      Int    // 1, 2, 3, ... up to programme max
+  totalCredits        Int
+
+  programmeVersion ProgrammeVersion @relation(fields: [programmeVersionId], references: [id])
+  courses          MqaPlanCourse[]
+
+  @@unique([programmeVersionId, semesterNumber])
+  @@map("mqa_semester_plans")
+}
+
+model MqaPlanCourse {
+  id              String  @id @default(cuid())
+  semesterPlanId  String
+  courseId         String
+  isElective       Boolean @default(false)
+
+  semesterPlan MqaSemesterPlan @relation(fields: [semesterPlanId], references: [id])
+  course       Course          @relation(fields: [courseId], references: [id])
+
+  @@map("mqa_plan_courses")
+}
+
+// =============================================
+// M03: Course & Prerequisite Engine
+// =============================================
+
+model Course {
+  id          String     @id @default(cuid())
+  code        String     @unique  // e.g., "COMP301"
+  name        String
+  creditHours Int
+  courseType  CourseType @default(THEORY)
+  description String?
+  programmeId String
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  programme        Programme         @relation(fields: [programmeId], references: [id])
+  mqaPlanEntries   MqaPlanCourse[]
+  prerequisites    Prerequisite[]    @relation("CoursePrereqs")
+  prerequisiteFor  Prerequisite[]    @relation("PrereqCourse")
+  equivalenciesA   CourseEquivalency[] @relation("EquivCourseA")
+  equivalenciesB   CourseEquivalency[] @relation("EquivCourseB")
+  offerings        CourseOffering[]
+  examResults      ExamResult[]
+
+  @@map("courses")
+}
+
+enum CourseType {
+  THEORY
+  PRACTICAL
+  LAB
+  CLINICAL
+  INDUSTRIAL_TRAINING
+}
+
+model Prerequisite {
+  id                   String  @id @default(cuid())
+  courseId              String
+  prerequisiteCourseId String
+  isMandatory          Boolean @default(true)
+
+  course             Course @relation("CoursePrereqs", fields: [courseId], references: [id])
+  prerequisiteCourse Course @relation("PrereqCourse", fields: [prerequisiteCourseId], references: [id])
+
+  @@unique([courseId, prerequisiteCourseId])
+  @@map("prerequisites")
+}
+
+model CourseEquivalency {
+  id              String  @id @default(cuid())
+  courseAId        String
+  courseBId        String
+  isDeliveryMerge Boolean @default(true)  // Can be merged into single class
+  approvedBy      String?
+  createdAt       DateTime @default(now())
+
+  courseA Course @relation("EquivCourseA", fields: [courseAId], references: [id])
+  courseB Course @relation("EquivCourseB", fields: [courseBId], references: [id])
+
+  @@unique([courseAId, courseBId])
+  @@map("course_equivalencies")
+}
+
+// =============================================
+// M02: Student Academic Profile
+// =============================================
+
+model Student {
+  id                  String       @id @default(cuid())
+  userId              String       @unique
+  studentId           String       @unique  // e.g., "University2025001"
+  programmeId         String
+  programmeVersionId  String
+  intakePeriod        IntakePeriod
+  intakeYear          Int
+  intakeAnchor        String       // e.g., "202510"
+  currentSemester     Int          @default(1)
+  totalCreditsEarned  Int          @default(0)
+  cumulativeGpa       Float        @default(0.0)
+  planStatus          PlanStatus   @default(ON_TRACK)
+  projectedGraduation String?      // e.g., "2028-S2"
+  isActive            Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  user              User              @relation(fields: [userId], references: [id])
+  programme         Programme         @relation(fields: [programmeId], references: [id])
+  programmeVersion  ProgrammeVersion  @relation(fields: [programmeVersionId], references: [id])
+  academicPlan      AcademicPlan?
+  enrolments        Enrolment[]
+  examResults       ExamResult[]
+  retakePlans       RetakePlan[]
+  appeals           Appeal[]
+  fees              Fee[]
+  invoices          Invoice[]
+  dropRequests      DropRequest[]
+
+  @@map("students")
+}
+
+enum IntakePeriod {
+  APRIL
+  JULY
+  OCTOBER
+}
+
+enum PlanStatus {
+  ON_TRACK
+  DELAYED
+  EXTENSION_REQUIRED
+}
+
+model AcademicPlan {
+  id                  String     @id @default(cuid())
+  studentId           String     @unique
+  planStatus          PlanStatus @default(ON_TRACK)
+  originalGraduation  String     // e.g., "2028-S2"
+  projectedGraduation String
+  hasExtension        Boolean    @default(false)
+  lastRevisedAt       DateTime   @default(now())
+
+  student   Student        @relation(fields: [studentId], references: [id])
+  semesters SemesterPlan[]
+
+  @@map("academic_plans")
+}
+
+model SemesterPlan {
+  id               String  @id @default(cuid())
+  academicPlanId   String
+  semesterNumber   Int
+  calendarSemester String  // e.g., "2026-S1"
+  totalCredits     Int
+  isExtension      Boolean @default(false)
+
+  academicPlan   AcademicPlan    @relation(fields: [academicPlanId], references: [id])
+  plannedCourses PlannedCourse[]
+
+  @@unique([academicPlanId, semesterNumber])
+  @@map("semester_plans")
+}
+
+model PlannedCourse {
+  id              String  @id @default(cuid())
+  semesterPlanId  String
+  courseId         String
+  courseCode       String
+  creditHours     Int
+  isRetake        Boolean @default(false)
+  isDeferred      Boolean @default(false)
+  gradeStatus     GradeStatus?
+
+  semesterPlan SemesterPlan @relation(fields: [semesterPlanId], references: [id])
+
+  @@map("planned_courses")
+}
+
+enum GradeStatus {
+  PASS
+  FAIL
+  INCOMPLETE
+  WITHDRAWN
+}
+
+// =============================================
+// M04: Timetable Generator
+// =============================================
+
+model Semester {
+  id           String       @id @default(cuid())
+  label        String       @unique  // e.g., "2026-S1"
+  year         Int
+  semesterNum  Int          // 1, 2, or 3
+  semesterType SemesterType
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+
+  offerings  CourseOffering[]
+  timetables Timetable[]
+  enrolments Enrolment[]
+
+  @@map("semesters")
+}
+
+enum SemesterType {
+  LONG   // Max 20 credits
+  SHORT  // Max 10 credits
+}
+
+model CourseOffering {
+  id           String  @id @default(cuid())
+  courseId      String
+  semesterId   String
+  lecturerId   String
+  maxCapacity  Int
+  currentEnrolment Int @default(0)
+  isConfirmed  Boolean @default(false)
+  createdAt    DateTime @default(now())
+
+  course     Course     @relation(fields: [courseId], references: [id])
+  semester   Semester   @relation(fields: [semesterId], references: [id])
+  lecturer   Lecturer   @relation(fields: [lecturerId], references: [id])
+  sections   Section[]
+  enrolments Enrolment[]
+  examResults ExamResult[]
+  timetableSlots TimetableSlot[]
+
+  @@unique([courseId, semesterId])
+  @@map("course_offerings")
+}
+
+model Timetable {
+  id            String        @id @default(cuid())
+  semesterId    String
+  approvalState ApprovalState @default(DRAFT)
+  solverScore   Float         @default(0)
+  generatedAt   DateTime      @default(now())
+  approvedBy    String?
+  approvedAt    DateTime?
+
+  semester Semester        @relation(fields: [semesterId], references: [id])
+  slots    TimetableSlot[]
+
+  @@map("timetables")
+}
+
+enum ApprovalState {
+  DRAFT
+  PENDING_PC
+  PENDING_HOP
+  APPROVED
+  REJECTED
+  PUBLISHED
+}
+
+model TimetableSlot {
+  id              String     @id @default(cuid())
+  timetableId     String
+  courseOfferingId String
+  sectionId       String
+  venueId         String
+  dayOfWeek       Int        // 0=Mon, 4=Fri
+  startTime       String     // "08:00"
+  endTime         String     // "10:00"
+  status          SlotStatus @default(SCHEDULED)
+  isMergedClass   Boolean    @default(false)
+
+  timetable     Timetable     @relation(fields: [timetableId], references: [id])
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  section       Section        @relation(fields: [sectionId], references: [id])
+  venue         Room           @relation(fields: [venueId], references: [id])
+  cancellations Cancellation[]
+
+  @@map("timetable_slots")
+}
+
+enum SlotStatus {
+  SCHEDULED
+  CANCELLED
+  REPLACED
+}
+
+model Section {
+  id              String  @id @default(cuid())
+  courseOfferingId String
+  sectionCode     String  // e.g., "A", "B"
+  combinedHeadcount Int   @default(0)
+
+  courseOffering  CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  timetableSlots TimetableSlot[]
+  enrolments     Enrolment[]
+
+  @@unique([courseOfferingId, sectionCode])
+  @@map("sections")
+}
+
+// =============================================
+// M05: Venue & Resource Manager
+// =============================================
+
+model Venue {
+  id       String @id @default(cuid())
+  name     String
+  building String
+  floor    Int
+
+  rooms Room[]
+
+  @@map("venues")
+}
+
+model Room {
+  id         String  @id @default(cuid())
+  venueId    String
+  code       String  @unique  // e.g., "B3-301"
+  name       String
+  capacity   Int
+  isActive   Boolean @default(true)
+  floorPlanX Float?
+  floorPlanY Float?
+
+  venue      Venue           @relation(fields: [venueId], references: [id])
+  equipment  RoomEquipment[]
+  timetableSlots TimetableSlot[]
+  maintenanceBlocks MaintenanceBlock[]
+
+  @@map("rooms")
+}
+
+model RoomEquipment {
+  id       String @id @default(cuid())
+  roomId   String
+  type     String  // "PROJECTOR", "COMPUTER_LAB", "WHITEBOARD", "AV_SYSTEM"
+  quantity Int     @default(1)
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@map("room_equipment")
+}
+
+model MaintenanceBlock {
+  id        String   @id @default(cuid())
+  roomId    String
+  startDate DateTime
+  endDate   DateTime
+  reason    String
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@map("maintenance_blocks")
+}
+
+// =============================================
+// M06: Exam & Results
+// =============================================
+
+model ExamResult {
+  id              String      @id @default(cuid())
+  studentId       String
+  courseOfferingId String
+  courseId         String
+  grade           String      // e.g., "A", "B+", "F"
+  gradePoint      Float
+  gradeStatus     GradeStatus
+  marks           Float?
+  releasedAt      DateTime    @default(now())
+  releasedBy      String      // Exam Division user ID
+
+  student       Student        @relation(fields: [studentId], references: [id])
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  course        Course         @relation(fields: [courseId], references: [id])
+
+  @@unique([studentId, courseOfferingId])
+  @@map("exam_results")
+}
+
+model RetakePlan {
+  id                  String        @id @default(cuid())
+  studentId           String
+  approvalState       ApprovalState @default(DRAFT)
+  projectedGraduation String
+  generatedAt         DateTime      @default(now())
+  reviewedBy          String?
+  approvedBy          String?
+
+  student      Student             @relation(fields: [studentId], references: [id])
+  failedCourses RetakeCourse[]
+  revisions    RetakeSemesterRevision[]
+
+  @@map("retake_plans")
+}
+
+model RetakeCourse {
+  id                    String  @id @default(cuid())
+  retakePlanId          String
+  courseId               String
+  courseCode             String
+  creditHours           Int
+  failedInSemester      String
+  scheduledRetakeSemester String?
+
+  retakePlan RetakePlan @relation(fields: [retakePlanId], references: [id])
+
+  @@map("retake_courses")
+}
+
+model RetakeSemesterRevision {
+  id               String @id @default(cuid())
+  retakePlanId     String
+  semesterNumber   Int
+  calendarSemester String
+  addedCourses     String[]    // Course IDs (retakes)
+  deferredCourses  String[]    // Course IDs (pushed forward)
+  totalCredits     Int
+
+  retakePlan RetakePlan @relation(fields: [retakePlanId], references: [id])
+
+  @@map("retake_semester_revisions")
+}
+
+// =============================================
+// M07: Enrolment & Registration
+// =============================================
+
+model Enrolment {
+  id              String   @id @default(cuid())
+  studentId       String
+  semesterId      String
+  courseOfferingId String
+  sectionId       String
+  enrolledAt      DateTime @default(now())
+  isDropped       Boolean  @default(false)
+  droppedAt       DateTime?
+
+  student       Student        @relation(fields: [studentId], references: [id])
+  semester      Semester       @relation(fields: [semesterId], references: [id])
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  section       Section        @relation(fields: [sectionId], references: [id])
+
+  @@unique([studentId, courseOfferingId])
+  @@map("enrolments")
+}
+
+model DropRequest {
+  id                    String   @id @default(cuid())
+  studentId             String
+  enrolmentId           String
+  courseCode             String
+  reason                String
+  aiImpactPreview       Json?    // Stored as JSON
+  studentAcknowledged   Boolean  @default(false)
+  status                DropRequestStatus @default(PENDING)
+  createdAt             DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@map("drop_requests")
+}
+
+enum DropRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// =============================================
+// M08: HR & Lecturer Management
+// =============================================
+
+model Lecturer {
+  id              String       @id @default(cuid())
+  userId          String       @unique
+  staffId         String       @unique
+  facultyId       String
+  department      String
+  contractType    ContractType @default(FULL_TIME)
+  maxTeachingLoad Int          // Max credit hours per semester
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user           User                @relation(fields: [userId], references: [id])
+  faculty        Faculty             @relation(fields: [facultyId], references: [id])
+  availability   LecturerAvailability[]
+  leaveRecords   LeaveRecord[]
+  offerings      CourseOffering[]
+  cancellations  Cancellation[]
+
+  @@map("lecturers")
+}
+
+enum ContractType {
+  FULL_TIME
+  PART_TIME
+  ADJUNCT
+}
+
+model LecturerAvailability {
+  id                  String @id @default(cuid())
+  lecturerId          String
+  semesterId          String
+  availableDays       Int[]    // [0,1,2,3,4] = Mon-Fri
+  preferredStartTime  String   @default("08:00")
+  preferredEndTime    String   @default("18:00")
+  maxConsecutiveHours Int      @default(2)
+
+  lecturer Lecturer @relation(fields: [lecturerId], references: [id])
+
+  @@unique([lecturerId, semesterId])
+  @@map("lecturer_availability")
+}
+
+model LeaveRecord {
+  id                    String      @id @default(cuid())
+  lecturerId            String
+  startDate             DateTime
+  endDate               DateTime
+  leaveType             LeaveType
+  status                LeaveStatus @default(PENDING)
+  replacementLecturerId String?
+
+  lecturer Lecturer @relation(fields: [lecturerId], references: [id])
+
+  @@map("leave_records")
+}
+
+enum LeaveType {
+  ANNUAL
+  MEDICAL
+  EMERGENCY
+  SABBATICAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Cancellation {
+  id               String   @id @default(cuid())
+  timetableSlotId  String
+  lecturerId       String
+  reason           String
+  cancelledAt      DateTime @default(now())
+  replacementSlots Json?    // Ranked replacement options as JSON
+  selectedReplacementId String?
+
+  timetableSlot TimetableSlot @relation(fields: [timetableSlotId], references: [id])
+  lecturer      Lecturer      @relation(fields: [lecturerId], references: [id])
+
+  @@map("cancellations")
+}
+
+// =============================================
+// M09: Finance & Fees
+// =============================================
+
+model Fee {
+  id          String   @id @default(cuid())
+  studentId   String
+  invoiceId   String?
+  semesterId  String
+  feeType     FeeType
+  amount      Float
+  currency    String   @default("MYR")
+  description String
+  creditHours Int?
+  createdAt   DateTime @default(now())
+
+  student Student  @relation(fields: [studentId], references: [id])
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@map("fees")
+}
+
+enum FeeType {
+  TUITION
+  RETAKE
+  OVERLOAD
+  APPEAL
+  LATE_PAYMENT
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  studentId   String
+  semesterId  String
+  totalAmount Float
+  paidAmount  Float         @default(0)
+  balance     Float
+  status      InvoiceStatus @default(UNPAID)
+  dueDate     DateTime
+  issuedAt    DateTime      @default(now())
+
+  student  Student   @relation(fields: [studentId], references: [id])
+  fees     Fee[]
+  payments Payment[]
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  invoiceId String
+  amount    Float
+  method    PaymentMethod
+  status    PaymentStatus @default(PENDING)
+  paidAt    DateTime?
+  reference String        @unique
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  ONLINE
+  BANK_TRANSFER
+  CASH
+  SCHOLARSHIP
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// =============================================
+// M10: Notifications & Appeals
+// =============================================
+
+model Notification {
+  id          String              @id @default(cuid())
+  recipientId String
+  channel     NotificationChannel
+  title       String
+  body        String
+  data        Json?
+  isRead      Boolean             @default(false)
+  sentAt      DateTime            @default(now())
+  readAt      DateTime?
+
+  recipient User @relation(fields: [recipientId], references: [id])
+
+  @@index([recipientId, isRead])
+  @@map("notifications")
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  SMS
+  IN_APP
+}
+
+model Appeal {
+  id                  String       @id @default(cuid())
+  studentId           String
+  appealType          AppealType
+  semesterId          String
+  reason              String
+  supportingDocuments String[]
+  aiAssessment        Json?        // AI pre-assessment stored as JSON
+  status              AppealStatus @default(PENDING)
+  reviewedBy          String?
+  approvedBy          String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@map("appeals")
+}
+
+enum AppealType {
+  CREDIT_OVERLOAD
+  PREREQUISITE_WAIVER
+  SUBJECT_DROP
+  EXTENSION_SEMESTER
+}
+
+enum AppealStatus {
+  PENDING
+  AI_REVIEWED
+  PC_REVIEWED
+  HOP_APPROVED
+  HOP_REJECTED
+}
+
+// =============================================
+// RAG / AI — Vector Storage (for chatbot)
+// =============================================
+
+model DocumentEmbedding {
+  id        String   @id @default(cuid())
+  sourceType String  // "course", "mqa_doc", "programme"
+  sourceId  String
+  content   String
+  // vector   Unsupported("vector(1536)")?  // Enable when pgvector is active
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([sourceType, sourceId])
+  @@map("document_embeddings")
+}
