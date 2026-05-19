@@ -61,6 +61,14 @@ run_claude_session() {
     
     cd "$PROJECT_DIR"
     
+    # Export environment variables to FORCE Claude Code to bypass login and use the proxy
+    export ANTHROPIC_API_KEY="dummy_key_to_bypass_login"
+    export ANTHROPIC_BASE_URL="http://localhost:8080/api"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="nvidia/nemotron-3-super-120b-a12b:free"
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="poolside/laguna-m.1:free"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="openai/gpt-oss-120b:free"
+    export CLAUDE_CODE_SUBAGENT_MODEL="poolside/laguna-xs.2:free"
+    
     # Create the resume prompt
     RESUME_PROMPT=$(generate_resume_prompt)
     
