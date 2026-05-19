@@ -6,6 +6,38 @@ export class StudentService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Handle course offering changes from integration service
+   */
+  async handleCourseOfferingChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    courseOffering: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Check if this affects any student academic plans
+    // - For UPDATE: Check if changes affect academic plan validity (course deletions, etc.)
+    // - For DELETE: Mark affected academic plans for revision
+
+    // For now, we'll log the change
+    console.log(`Student service received ${operation} event for course offering ${courseOffering.id}`);
+  }
+
+  /**
+   * Handle semester changes from integration service
+   */
+  async handleSemesterChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    semester: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Prepare to generate academic plans for this semester
+    // - For UPDATE: Check if changes affect existing academic plans
+    // - For DELETE: Archive or remove academic plans for this semester
+
+    // For now, we'll log the change
+    console.log(`Student service received ${operation} event for semester ${semester.id}`);
+  }
+
+  /**
    * Generate academic plan for a student based on their intake cohort
    * and the MQA-approved course structure for their programme version
    */

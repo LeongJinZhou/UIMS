@@ -1,1 +1,1 @@
-// exam feature module — to be implemented
+export { default as ExamScheduleView } from './ExamScheduleView';

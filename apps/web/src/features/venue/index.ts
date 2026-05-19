@@ -1,1 +1,1 @@
-// venue feature module — to be implemented
+export { default as VenueBookingView } from './VenueBookingView';

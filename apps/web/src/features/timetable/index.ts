@@ -1,1 +1,1 @@
-// timetable feature module — to be implemented
+export { default as TimetableView } from './TimetableView';

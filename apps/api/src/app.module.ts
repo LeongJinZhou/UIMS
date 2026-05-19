@@ -10,10 +10,11 @@ import { CourseModule } from './modules/course/course.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
 import { VenueModule } from './modules/venue/venue.module';
 import { ExamModule } from './modules/exam/exam.module';
-import { EnrolmentModule } from './modules/enrolment/enrolment.module';
+import { EnrolmentModule } = from './modules/enrolment/enrolment.module';
 import { HrModule } from './modules/hr/hr.module';
 import { FinanceModule } from './modules/finance/finance.module';
-import { NotificationModule } from './modules/notification/notification.module';
+import { NotificationModule } = from './modules/notification/notification.module';
+import { IntegrationModule } from './modules/integration/integration.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { NotificationModule } from './modules/notification/notification.module';
     HrModule,              // M08
     FinanceModule,         // M09
     NotificationModule,    // M10
+    IntegrationModule,     // M11 - Integration Service
   ],
 })
 export class AppModule {}

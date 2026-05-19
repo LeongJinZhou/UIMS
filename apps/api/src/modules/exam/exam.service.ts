@@ -6,6 +6,38 @@ export class ExamService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Handle course offering changes from integration service
+   */
+  async handleCourseOfferingChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    courseOffering: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Check if this affects exam scheduling
+    // - For UPDATE: Check if changes affect exam validity (course type changes, etc.)
+    // - For DELETE: Remove from exam schedules and flag affected exams for rescheduling
+
+    // For now, we'll log the change
+    console.log(`Exam service received ${operation} event for course offering ${courseOffering.id}`);
+  }
+
+  /**
+   * Handle semester changes from integration service
+   */
+  async handleSemesterChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    semester: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Prepare to schedule exams for this semester
+    // - For UPDATE: Check if changes affect existing exam schedules
+    // - For DELETE: Archive or remove exam schedules for this semester
+
+    // For now, we'll log the change
+    console.log(`Exam service received ${operation} event for semester ${semester.id}`);
+  }
+
+  /**
    * Schedule examinations for a semester based on course offerings
    * This implementation includes venue allocation and invigilator assignment
    */

@@ -6,6 +6,38 @@ export class TimetableService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Handle course offering changes from integration service
+   */
+  async handleCourseOfferingChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    courseOffering: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Check if this affects any existing timetables and flag for regeneration
+    // - For UPDATE: Check if changes affect timetable validity (room capacity, lecturer changes, etc.)
+    // - For DELETE: Remove from any timetables and flag affected timetables for regeneration
+
+    // For now, we'll log the change
+    console.log(`Timetable service received ${operation} event for course offering ${courseOffering.id}`);
+  }
+
+  /**
+   * Handle semester changes from integration service
+   */
+  async handleSemesterChange(
+    operation: 'CREATE' | 'UPDATE' | 'DELETE',
+    semester: any,
+  ): Promise<void> {
+    // In a production system, we would:
+    // - For CREATE: Prepare to generate timetables for this semester
+    // - For UPDATE: Check if changes affect existing timetables
+    // - For DELETE: Archive or remove timetables for this semester
+
+    // For now, we'll log the change
+    console.log(`Timetable service received ${operation} event for semester ${semester.id}`);
+  }
+
+  /**
    * Generate a timetable for a given semester based on course offerings
    * and constraints (room capacity, lecturer availability, student conflicts, etc.)
    */
