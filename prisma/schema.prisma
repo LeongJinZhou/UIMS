@@ -73,8 +73,8 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  faculty   Faculty   @relation(fields: [facultyId], references: [id])
-  lecturers Lecturer[]
+  faculties Faculty[] @relation("FacultyOnDepartment")
+  lecturers Lecturer[] @relation("LecturerOnDepartment")
   programmes Programme[] @relation("ProgrammeOnDepartment")
 
   @@map("departments")
@@ -89,7 +89,7 @@ model Faculty {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  department Department? @relation(fields: [departmentId], references: [id])
+  department Department? @relation("FacultyOnDepartment", fields: [departmentId], references: [id])
   programmes Programme[]
   lecturers  Lecturer[]
 
@@ -99,6 +99,7 @@ model Faculty {
 model Programme {
   id                   String       @id @default(cuid())
   facultyId            String
+  departmentId         String?
   name                 String       // e.g., "Bachelor of Computer Science"
   code                 String       @unique  // e.g., "BCS"
   calendarType         CalendarType @default(STANDARD)
@@ -109,7 +110,8 @@ model Programme {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  faculty     Faculty             @relation(fields: [facultyId], references: [id])
+  faculty     Faculty             @relation("FacultyOnDepartment", fields: [facultyId], references: [id])
+  department  Department?         @relation("ProgrammeOnDepartment", fields: [departmentId], references: [id])
   versions    ProgrammeVersion[]
   courses     Course[]
   students    Student[]
@@ -411,7 +413,7 @@ model TimetableSlot {
   dayOfWeek       Int        // 0=Mon, 4=Fri
   startTime       String     // "08:00"
   endTime         String     // "10:00"
-  status          SlotStatus @default(SCHEDULED)
+  status          ExamSlotStatus @default(SCHEDULED)
   isMergedClass   Boolean    @default(false)
 
   timetable     Timetable     @relation(fields: [timetableId], references: [id])
@@ -618,7 +620,7 @@ model ExamTimetableSlot {
   endTime         String   // HH:MM format
   durationMinutes Int
   expectedAttendance Int
-  status          SlotStatus @default(SCHEDULED)
+  status          ExamSlotStatus @default(SCHEDULED)
 
   examTimetable   ExamTimetable @relation(fields: [examTimetableId], references: [id])
   courseOffering  CourseOffering @relation(fields: [courseOfferingId], references: [id])
@@ -635,7 +637,7 @@ enum ExamTimetableStatus {
   PUBLISHED
 }
 
-enum SlotStatus {
+enum ExamSlotStatus {
   SCHEDULED
   CANCELLED
   RESCHEDULED
@@ -699,7 +701,7 @@ model Lecturer {
   userId          String       @unique
   staffId         String       @unique
   facultyId       String
-  department      String
+  department      Department? @relation("LecturerOnDepartment", fields: [departmentId], references: [id])
   contractType    ContractType @default(FULL_TIME)
   maxTeachingLoad Int          // Max credit hours per semester
   isActive        Boolean      @default(true)
@@ -780,9 +782,9 @@ model PerformanceReview {
   reviewedAt      DateTime?
   reviewedById    String?  // Who actually reviewed/finalized
 
-  lecturer Lecturer @relation(fields: [lecturerId], references: [id])
-  reviewer User @relation(fields: [reviewerId], references: [id])
-  reviewedBy User @relation(fields: [reviewedById], references: [id])
+  lecturer Lecturer @relation("LecturerOnPerformanceReview", fields: [lecturerId], references: [id])
+  reviewer User @relation("ReviewerOnPerformanceReview", fields: [reviewerId], references: [id])
+  reviewedBy User @relation("ReviewedByOnPerformanceReview", fields: [reviewedById], references: [id])
 
   @@map("performance_reviews")
 }
@@ -892,9 +894,9 @@ enum PaymentStatus {
   REFUNDED
 }
 
-# =============================================
-# M09: Finance & Fees (continued)
-# =============================================
+// =============================================
+// M09: Finance & Fees (continued)
+// =============================================
 
 model FeeStructure {
   id          String   @id @default(cuid())
