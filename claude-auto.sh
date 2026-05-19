@@ -61,25 +61,19 @@ run_claude_session() {
     
     cd "$PROJECT_DIR"
     
-    # Create a temporary file for the resume prompt
+    # Create the resume prompt
     RESUME_PROMPT=$(generate_resume_prompt)
     
-    # Run Claude Code and capture output, piping the resume prompt
     if [ $SESSION_COUNT -eq 1 ]; then
-        # First session — let user interact normally
-        claude 2>&1 | tee -a "$LOG_FILE" &
-        CLAUDE_PID=$!
+        # First session — let user interact normally in foreground
+        claude
+        EXIT_CODE=$?
     else
-        # Restart session — feed resume prompt automatically
+        # Restart session — feed resume prompt automatically using -p argument
         log "${CYAN}📋 Feeding resume prompt to Claude Code...${NC}"
-        echo "$RESUME_PROMPT" | claude --print 2>&1 | tee -a "$LOG_FILE"
-        # After the print command finishes, start interactive session
-        claude 2>&1 | tee -a "$LOG_FILE" &
-        CLAUDE_PID=$!
+        claude -p "$RESUME_PROMPT"
+        EXIT_CODE=$?
     fi
-    
-    wait $CLAUDE_PID
-    EXIT_CODE=$?
     
     return $EXIT_CODE
 }
