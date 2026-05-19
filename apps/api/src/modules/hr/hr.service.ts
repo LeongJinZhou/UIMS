@@ -29,9 +29,9 @@ export class HrService {
   /**
    * Get a specific lecturer with details
    */
-  async getLecturer(lecturerId: string): Promise<any> {
+  async getLecturer(lectorId: string): Promise<any> {
     const lecturer = await this.prisma.lecturer.findUnique({
-      where: { id: lecturerId },
+      where: { id: lectorId },
       include: {
         user: true,
         faculty: true,
@@ -47,7 +47,7 @@ export class HrService {
     });
 
     if (!lecturer) {
-      throw new NotFoundException(`Lecturer not found: ${lecturerId}`);
+      throw new NotFoundException(`Lecturer not found: ${lectorId}`);
     }
 
     return lecturer;
@@ -239,6 +239,112 @@ export class HrService {
   }
 
   /**
+   * Create or update lecturer availability
+   */
+  async setLecturerAvailability(
+    lecturerId: string,
+    semesterId: string,
+    data: {
+      availableDays: number[]; // [0,1,2,3,4] = Mon-Fri
+      preferredStartTime: string; // HH:MM format
+      preferredEndTime: string; // HH:MM format
+      maxConsecutiveHours: number;
+    },
+  ): Promise<any> {
+    // Validate lecturer exists
+    const lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: lecturerId },
+    });
+
+    if (!lecturer) {
+      throw new NotFoundException(`Lecturer not found: ${lecturerId}`);
+    }
+
+    // Validate semester exists
+    const semester = await this.prisma.semester.findUnique({
+      where: { id: semesterId },
+    });
+
+    if (!semester) {
+      throw new NotFoundException(`Semester not found: ${semesterId}`);
+    }
+
+    // Check if availability record already exists
+    const existingAvailability = await this.prisma.lecturerAvailability.findFirst({
+      where: {
+        lecturerId,
+        semesterId,
+      },
+    });
+
+    if (existingAvailability) {
+      // Update existing record
+      return await this.prisma.lecturerAvailability.update({
+        where: { id: existingAvailability.id },
+        data: {
+          availableDays: data.availableDays,
+          preferredStartTime: data.preferredStartTime,
+          preferredEndTime: data.preferredEndTime,
+          maxConsecutiveHours: data.maxConsecutiveHours,
+        },
+      });
+    } else {
+      // Create new record
+      return await this.prisma.lecturerAvailability.create({
+        data: {
+          lecturerId,
+          semesterId,
+          availableDays: data.availableDays,
+          preferredStartTime: data.preferredStartTime,
+          preferredEndTime: data.preferredEndTime,
+          maxConsecutiveHours: data.maxConsecutiveHours,
+        },
+      });
+    }
+  }
+
+  /**
+   * Get lecturer teaching assignments (offerings)
+   */
+  async getLecturerOfferings(lecturerId: string, semesterId?: string): Promise<any> {
+    const whereClause: any = { lecturerId };
+    if (semesterId) {
+      whereClause.semesterId = semesterId;
+    }
+
+    const offerings = await this.prisma.courseOffering.findMany({
+      where: whereClause,
+      include: {
+        course: true,
+        semester: true,
+        sections: {
+          include: {
+            enrolments: {
+              include: {
+                student: {
+                  include: {
+                    user: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        semester: {
+          label: 'asc',
+        },
+        course: {
+          code: 'asc',
+        },
+      },
+    });
+
+    return offerings;
+  }
+
+  /**
    * Get HR dashboard statistics
    */
   async getHrDashboard(): Promise<any> {
@@ -247,6 +353,7 @@ export class HrService {
       activeLecturers,
       onLeaveLecturers,
       totalCourses,
+      lecturersWithAvailability,
     ] = await Promise.all([
       this.prisma.lecturer.count(),
       this.prisma.lecturer.count({ where: { isActive: true } }),
@@ -256,6 +363,7 @@ export class HrService {
         },
       }),
       this.prisma.course.count(),
+      this.prisma.lecturerAvailability.count(),
     ]);
 
     return {
@@ -266,7 +374,63 @@ export class HrService {
       lecturerUtilizationRate: totalLecturers > 0
         ? (activeLecturers / totalLecturers) * 100
         : 0,
+      availabilityCoverageRate: totalLecturers > 0
+        ? (lecturersWithAvailability / totalLecturers) * 100
+        : 0,
     };
+  }
+
+  /**
+   * Get lecturers who are overloaded (exceeding max teaching load)
+   */
+  async getOverloadedLecturers(): Promise<any> {
+    const lecturers = await this.prisma.lecturer.findMany({
+      where: { isActive: true },
+      include: {
+        offerings: {
+          include: {
+            course: true,
+            semester: {
+              where: { isActive: true },
+            },
+          },
+        },
+      },
+    });
+
+    const overloadedLecturers = [];
+
+    for (const lecturer of lecturers) {
+      let totalCreditHours = 0;
+
+      for (const offering of lecturer.offerings) {
+        // Only count offerings for active semesters
+        if (offering.semester.isActive) {
+          totalCreditHours += offering.course.creditHours;
+        }
+      }
+
+      const maxTeachingLoad = lecturer.maxTeachingLoad || 0;
+      const workloadPercentage =
+        maxTeachingLoad > 0
+          ? (totalCreditHours / maxTeachingLoad) * 100
+          : 0;
+
+      if (workloadPercentage > 100) {
+        overloadedLecturers.push({
+          lecturerId: lecturer.id,
+          lecturerName: lecturer.user?.name || 'Unknown',
+          department: lecturer.department,
+          contractType: lecturer.contractType,
+          maxTeachingLoad,
+          currentCreditHours: totalCreditHours,
+          workloadPercentage: Number(workloadPercentage.toFixed(2)),
+          isOverloaded: true,
+        });
+      }
+    }
+
+    return overloadedLecturers;
   }
 
   findAll() {
