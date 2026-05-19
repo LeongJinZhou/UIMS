@@ -306,6 +306,314 @@ export class FinanceService {
   }
 
   /**
+   * Get all expenses with optional filtering
+   */
+  async getExpenses(filters: {
+    budgetLineId?: string;
+    incurredBy?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+  } = {}): Promise<any> {
+    const { budgetLineId, incurredBy, status, startDate, endDate } = filters;
+
+    const whereClause: any = {};
+    if (budgetLineId) whereClause.budgetLineId = budgetLineId;
+    if (incurredBy) whereClause.incurredBy = incurredBy;
+    if (status) whereClause.status = status;
+    if (startDate) whereClause.expenseDate = { gte: startDate };
+    if (endDate) {
+      if (whereClause.expenseDate) {
+        whereClause.expenseDate.lte = endDate;
+      } else {
+        whereClause.expenseDate = { lte: endDate };
+      }
+    }
+
+    const expenses = await this.prisma.expense.findMany({
+      where: whereClause,
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        },
+        incurredByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        expenseDate: 'desc'
+      }
+    });
+
+    return expenses;
+  }
+
+  /**
+   * Create a new expense record
+   */
+  async createExpense(
+    data: {
+      budgetLineId: string;
+      amount: number;
+      description: string;
+      expenseDate?: string | Date;
+      incurredBy: string;
+      receiptUrl?: string;
+    },
+  ): Promise<any> {
+    // Validate budget line exists
+    const budgetLine = await this.prisma.budgetLine.findUnique({
+      where: { id: data.budgetLineId },
+      include: {
+        budget: true
+      }
+    });
+
+    if (!budgetLine) {
+      throw new NotFoundException(`Budget line not found: ${data.budgetLineId}`);
+    }
+
+    // Validate user exists
+    const user = await this.prisma.user.findUnique({
+      where: { id: data.incurredBy }
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User not found: ${data.incurredBy}`);
+    }
+
+    // Parse expense date
+    const expenseDate = data.expenseDate
+      ? (typeof data.expenseDate === 'string' ? new Date(data.expenseDate) : data.expenseDate)
+      : new Date();
+
+    // Create expense
+    const expense = await this.prisma.expense.create({
+      data: {
+        budgetLineId: data.budgetLineId,
+        amount: data.amount,
+        description: data.description,
+        expenseDate: expenseDate,
+        incurredBy: data.incurredBy,
+        receiptUrl: data.receiptUrl,
+        status: 'PENDING'
+      },
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        },
+        incurredByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return expense;
+  }
+
+  /**
+   * Approve an expense
+   */
+  async approveExpense(expenseId: string, approvedBy: string): Promise<any> {
+    // Validate expense exists
+    const expense = await this.prisma.expense.findUnique({
+      where: { id: expenseId },
+      include: {
+        budgetLine: {
+          include: {
+            budget: true
+          }
+        },
+        incurredByUser: true
+      }
+    });
+
+    if (!expense) {
+      throw new NotFoundException(`Expense not found: ${expenseId}`);
+    }
+
+    // Validate approver exists
+    const approver = await this.prisma.user.findUnique({
+      where: { id: approvedBy }
+    });
+
+    if (!approver) {
+      throw new NotFoundException(`User not found: ${approvedBy}`);
+    }
+
+    // Check if approver has permission (simplified - in reality would check roles)
+    // For now, allow any authenticated user to approve
+
+    // Update expense
+    const updatedExpense = await this.prisma.expense.update({
+      where: { id: expenseId },
+      data: {
+        status: 'APPROVED'
+      },
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        },
+        incurredByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    // Update budget line spent amount
+    await this.prisma.budgetLine.update({
+      where: { id: expense.budgetLineId },
+      data: {
+        spentAmount: {
+          increment: expense.amount
+        }
+      }
+    });
+
+    return updatedExpense;
+  }
+
+  /**
+   * Reimburse an expense
+   */
+  async reimburseExpense(expenseId: string): Promise<any> {
+    // Validate expense exists
+    const expense = await this.prisma.expense.findUnique({
+      where: { id: expenseId },
+      include: {
+        budgetLine: {
+          include: {
+            budget: true
+          }
+        },
+        incurredByUser: true
+      }
+    });
+
+    if (!expense) {
+      throw new NotFoundException(`Expense not found: ${expenseId}`);
+    }
+
+    // Check if expense is approved
+    if (expense.status !== 'APPROVED') {
+      throw new BadRequestException(`Expense must be approved before reimbursement. Current status: ${expense.status}`);
+    }
+
+    // Update expense
+    const updatedExpense = await this.prisma.expense.update({
+      where: { id: expenseId },
+      data: {
+        status: 'REIMBURSED'
+      },
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        },
+        incurredByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return updatedExpense;
+  }
+
+  /**
+   * Reject an expense
+   */
+  async rejectExpense(expenseId: string, reason: string): Promise<any> {
+    // Validate expense exists
+    const expense = await this.prisma.expense.findUnique({
+      where: { id: expenseId },
+      include: {
+        budgetLine: {
+          include: {
+            budget: true
+          }
+        },
+        incurredByUser: true
+      }
+    });
+
+    if (!expense) {
+      throw new NotFoundException(`Expense not found: ${expenseId}`);
+    }
+
+    // Update expense
+    const updatedExpense = await this.prisma.expense.update({
+      where: { id: expenseId },
+      data: {
+        status: 'REJECTED'
+      },
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        },
+        incurredByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return updatedExpense;
+  }
+
+  /**
    * Create a new fee structure
    */
   async createFeeStructure(
@@ -745,17 +1053,60 @@ export class FinanceService {
 
   /**
    * Generate expenses report for an academic year
-   * Note: This would require expense tracking to be implemented
    */
   private async generateExpensesReport(academicYear: number): Promise<any> {
-    // For now, return placeholder data
-    // In a full implementation, this would query actual expense records
+    // Get all expenses for the academic year
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        expenseDate: {
+          gte: new Date(`${academicYear}-01-01`),
+          lt: new Date(`${academicYear + 1}-01-01`),
+        },
+        status: 'APPROVED', // Only include approved expenses
+      },
+      include: {
+        budgetLine: {
+          include: {
+            budget: {
+              include: {
+                department: true,
+                programme: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Group by expense type (we'll use description keywords or budget line description)
+    const expensesByCategory = expenses.reduce((acc, expense) => {
+      // For simplicity, we'll use the budget line description as category
+      const category = expense.budgetLine?.description || 'Uncategorized';
+      if (!acc[category]) {
+        acc[category] = 0;
+      }
+      acc[category] += expense.amount;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Group by department
+    const expensesByDepartment = expenses.reduce((acc, expense) => {
+      const departmentName = expense.budgetLine?.budget?.department?.name || 'Unknown Department';
+      if (!acc[departmentName]) {
+        acc[departmentName] = 0;
+      }
+      acc[departmentName] += expense.amount;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+
     return {
       academicYear,
-      totalExpenses: 0,
-      expensesByCategory: {},
-      message:
-        'Expense tracking not yet implemented. This report shows placeholder data.',
+      totalExpenses,
+      expensesByCategory,
+      expensesByDepartment,
+      expenseCount: expenses.length,
       generatedAt: new Date(),
     };
   }

@@ -144,4 +144,66 @@ export class FinanceController {
   async getFinanceDashboard() {
     return this.financeService.getFinanceDashboard();
   }
+
+  // Expense Management Endpoints
+  @Get('expenses')
+  async getExpenses(
+    @Body() filters: {
+      budgetLineId?: string;
+      incurredBy?: string;
+      status?: string;
+      startDate?: string; // ISO date string
+      endDate?: string;   // ISO date string
+    } = {}
+  ) {
+    // Convert date strings to Date objects if provided
+    const processedFilters = { ...filters };
+    if (filters.startDate) processedFilters.startDate = new Date(filters.startDate);
+    if (filters.endDate) processedFilters.endDate = new Date(filters.endDate);
+    return this.financeService.getExpenses(processedFilters);
+  }
+
+  @Post('expenses')
+  async createExpense(@Body() body: {
+    budgetLineId: string;
+    amount: number;
+    description: string;
+    expenseDate?: string | Date;
+    incurredBy: string;
+    receiptUrl?: string;
+  }) {
+    return this.financeService.createExpense(body);
+  }
+
+  @Post('expenses/:expenseId/approve')
+  async approveExpense(
+    @Param('expenseId') expenseId: string,
+    @Body() body: { approvedBy: string }
+  ) {
+    return this.financeService.approveExpense(expenseId, body.approvedBy);
+  }
+
+  @Post('expenses/:expenseId/reimburse')
+  async reimburseExpense(@Param('expenseId') expenseId: string) {
+    return this.financeService.reimburseExpense(expenseId);
+  }
+
+  @Post('expenses/:expenseId/reject')
+  async rejectExpense(
+    @Param('expenseId') expenseId: string,
+    @Body() body: { reason: string }
+  ) {
+    return this.financeService.rejectExpense(expenseId, body.reason);
+  }
+
+  @Get('reports/expenses')
+  async getExpensesReport(
+    @Body() body: { academicYear: number }
+  ) {
+    return this.financeService.generateFinancialReport({
+      reportType: 'EXPENSES',
+      academicYear: body.academicYear,
+      generatedBy: body.generatedBy || 'system' // In real app, get from auth
+    });
+  }
 }
