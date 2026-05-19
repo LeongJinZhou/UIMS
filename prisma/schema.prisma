@@ -65,14 +65,31 @@ enum UserRole {
 // M01: Programme & MQA Repository
 // =============================================
 
-model Faculty {
+model Department {
   id        String   @id @default(cuid())
   name      String
-  code      String   @unique  // e.g., "FOCS", "FOE", "FOM"
+  code      String   @unique
   deanId    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  faculty   Faculty   @relation(fields: [facultyId], references: [id])
+  lecturers Lecturer[]
+  programmes Programme[] @relation("ProgrammeOnDepartment")
+
+  @@map("departments")
+}
+
+model Faculty {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique  // e.g., "FOCS", "FOE", "FOM"
+  departmentId String?
+  deanId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  department Department? @relation(fields: [departmentId], references: [id])
   programmes Programme[]
   lecturers  Lecturer[]
 
@@ -959,6 +976,19 @@ model Notification {
 
   @@index([recipientId, isRead])
   @@map("notifications")
+}
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  title     String
+  body      String
+  channel   NotificationChannel
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_templates")
 }
 
 enum NotificationChannel {
