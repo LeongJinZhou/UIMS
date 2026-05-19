@@ -10,11 +10,12 @@ import { CourseModule } from './modules/course/course.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
 import { VenueModule } from './modules/venue/venue.module';
 import { ExamModule } from './modules/exam/exam.module';
-import { EnrolmentModule } = from './modules/enrolment/enrolment.module';
+import { EnrolmentModule } from './modules/enrolment/enrolment.module';
 import { HrModule } from './modules/hr/hr.module';
 import { FinanceModule } from './modules/finance/finance.module';
-import { NotificationModule } = from './modules/notification/notification.module';
+import { NotificationModule } from './modules/notification/notification.module';
 import { IntegrationModule } from './modules/integration/integration.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -27,7 +28,7 @@ import { IntegrationModule } from './modules/integration/integration.module';
     // Database
     DatabaseModule,
 
-    // Feature modules (M01–M10)
+    // Feature modules (M01–M12)
     AuthModule,
     ProgrammeModule,       // M01
     StudentModule,         // M02
@@ -40,6 +41,7 @@ import { IntegrationModule } from './modules/integration/integration.module';
     FinanceModule,         // M09
     NotificationModule,    // M10
     IntegrationModule,     // M11 - Integration Service
+    AiModule,              // M12 - AI Assistance Features
   ],
 })
 export class AppModule {}
