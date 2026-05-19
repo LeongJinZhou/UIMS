@@ -123,8 +123,31 @@ monitor_and_restart() {
     log "${GREEN}Auto-recovery system shut down.${NC}"
 }
 
+# Start the proxy server in the background
+PROXY_SCRIPT="/Users/jinzhou/Documents/Project/.claude/proxy.js"
+if [ -f "$PROXY_SCRIPT" ]; then
+    log "${CYAN}Starting API Key Rotation Proxy...${NC}"
+    node "$PROXY_SCRIPT" &
+    PROXY_PID=$!
+    # Give proxy a second to start
+    sleep 1
+else
+    log "${RED}Proxy script not found at $PROXY_SCRIPT!${NC}"
+    exit 1
+fi
+
+# Cleanup function to kill proxy and save work
+cleanup() {
+    log "${YELLOW}Caught interrupt. Shutting down proxy and saving work...${NC}"
+    if [ -n "$PROXY_PID" ]; then
+        kill $PROXY_PID 2>/dev/null
+    fi
+    save_to_github
+    exit 0
+}
+
 # Trap Ctrl+C to save work before exiting
-trap 'log "${YELLOW}Caught interrupt. Saving work...${NC}"; save_to_github; exit 0' INT TERM
+trap cleanup INT TERM
 
 # Start the monitor
 monitor_and_restart
