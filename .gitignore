@@ -51,3 +51,8 @@ minio-data/
 
 # OS
 Thumbs.db
+
+# Planning & Claude Code (local only, never push)
+.planning/
+.claude/
+claude-auto.sh
