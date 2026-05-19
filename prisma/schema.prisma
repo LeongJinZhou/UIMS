@@ -747,6 +747,36 @@ enum LeaveStatus {
   REJECTED
 }
 
+model PerformanceReview {
+  id              String   @id @default(cuid())
+  lecturerId      String
+  reviewPeriod    String   // e.g., "2024-H1", "2024-H2", "2024-Full"
+  reviewDate      DateTime @default(now())
+  reviewerId      String   // HR or Head of Department
+  teachingScore   Int?     // 1-5 scale
+  researchScore   Int?     // 1-5 scale
+  serviceScore    Int?     // 1-5 scale
+  leadershipScore Int?     // 1-5 scale
+  overallScore    Float?   // Calculated average
+  comments        String?
+  status          ReviewStatus @default(DRAFT)
+  reviewedAt      DateTime?
+  reviewedById    String?  // Who actually reviewed/finalized
+
+  lecturer Lecturer @relation(fields: [lecturerId], references: [id])
+  reviewer User @relation(fields: [reviewerId], references: [id])
+  reviewedBy User @relation(fields: [reviewedById], references: [id])
+
+  @@map("performance_reviews")
+}
+
+enum ReviewStatus {
+  DRAFT
+  PENDING_REVIEW
+  REVIEWED
+  FINALIZED
+}
+
 model Cancellation {
   id               String   @id @default(cuid())
   timetableSlotId  String
@@ -843,6 +873,71 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+}
+
+# =============================================
+# M09: Finance & Fees (continued)
+# =============================================
+
+model FeeStructure {
+  id          String   @id @default(cuid())
+  programmeId String
+  academicYear Int    // e.g., 2024 for 2024-2025 academic year
+  feeType     FeeType
+  amount      Float
+  currency    String   @default("MYR")
+  description String?
+  creditHours Int?
+
+  programme   Programme @relation(fields: [programmeId], references: [id])
+
+  @@unique([programmeId, academicYear, feeType])
+  @@map("fee_structures")
+}
+
+model Budget {
+  id            String   @id @default(cuid())
+  departmentId  String?  // Optional: if not set, it's a university-wide budget
+  programmeId   String?  // Optional: if not set, it's for the whole department or university
+  academicYear  Int      // e.g., 2024 for 2024-2025 fiscal year
+  totalAmount   Float
+  currency      String   @default("MYR")
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  department  Department? @relation(fields: [departmentId], references: [id])
+  programme   Programme? @relation(fields: [programmeId], references: [id])
+
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id          String   @id @default(cuid())
+  budgetId    String
+  description String
+  amount      Float
+  currency    String   @default("MYR")
+  spentAmount Float    @default(0)
+  startDate   DateTime?
+  endDate     DateTime?
+
+  budget Budget @relation(fields: [budgetId], references: [id])
+
+  @@map("budget_lines")
+}
+
+model FinancialReport {
+  id            String   @id @default(cuid())
+  reportType    String   // e.g., "REVENUE", "EXPENSES", "BALANCE_SHEET", "CASH_FLOW"
+  academicYear  Int
+  generatedAt   DateTime @default(now())
+  generatedBy   String   // User ID of who generated the report
+  data          Json?    // The report data in JSON format
+  fileUrl       String?  // URL to exported file (PDF/Excel) if applicable
+
+  @@map("financial_reports")
 }
 
 // =============================================

@@ -57,6 +57,89 @@ export class FinanceController {
     return this.financeService.processPayment(invoiceId, body.amount, body.method, body.reference);
   }
 
+  @Get('fee-structures')
+  async getFeeStructures(
+    @Body() filters: {
+      programmeId?: string;
+      academicYear?: number;
+      feeType?: string;
+    } = {}
+  ) {
+    return this.financeService.getFeeStructures(filters);
+  }
+
+  @Post('fee-structures')
+  async createFeeStructure(@Body() body: {
+    programmeId: string;
+    academicYear: number;
+    feeType: string;
+    amount: number;
+    description?: string;
+    creditHours?: number;
+  }) {
+    return this.financeService.createFeeStructure(body);
+  }
+
+  @Get('budgets')
+  async getBudgets(
+    @Body() filters: {
+      departmentId?: string;
+      programmeId?: string;
+      academicYear?: number;
+      isActive?: boolean;
+    } = {}
+  ) {
+    return this.financeService.getBudgets(filters);
+  }
+
+  @Post('budgets')
+  async createBudget(@Body() body: {
+    departmentId?: string;
+    programmeId?: string;
+    academicYear: number;
+    totalAmount: number;
+    description?: string;
+  }) {
+    return this.financeService.createBudget(body);
+  }
+
+  @Get('budgets/:budgetId/lines')
+  async getBudgetLines(@Param('budgetId') budgetId: string) {
+    return this.financeService.getBudgetLines(budgetId);
+  }
+
+  @Post('budgets/:budgetId/lines')
+  async upsertBudgetLine(
+    @Param('budgetId') budgetId: string,
+    @Body() body: {
+      description: string;
+      amount: number;
+    }
+  ) {
+    return this.financeService.upsertBudgetLine(budgetId, body);
+  }
+
+  @Post('budgets/:budgetId/lines/:lineId/expenditure')
+  async recordExpenditure(
+    @Param('budgetId') budgetId: string,
+    @Param('lineId') budgetLineId: string,
+    @Body() body: {
+      amount: number;
+      description?: string;
+    }
+  ) {
+    return this.financeService.recordExpenditure(budgetLineId, body.amount, body.description);
+  }
+
+  @Post('reports/generate')
+  async generateFinancialReport(@Body() body: {
+    reportType: string; // REVENUE, EXPENSES, BALANCE_SHEET, CASH_FLOW
+    academicYear: number;
+    generatedBy: string;
+  }) {
+    return this.financeService.generateFinancialReport(body);
+  }
+
   @Get('dashboard')
   async getFinanceDashboard() {
     return this.financeService.getFinanceDashboard();

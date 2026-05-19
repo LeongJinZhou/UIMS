@@ -436,4 +436,326 @@ export class HrService {
   findAll() {
     return { module: 'M08 — HR & Lecturer Management', status: 'ready' };
   }
+
+  /**
+   * Get all performance reviews with filtering options
+   */
+  async getPerformanceReviews(filters: {
+    lecturerId?: string;
+    status?: string;
+    reviewPeriod?: string;
+  } = {}): Promise<any> {
+    const { lecturerId, status, reviewPeriod } = filters;
+
+    const whereClause: any = {};
+    if (lecturerId) whereClause.lecturerId = lecturerId;
+    if (status) whereClause.status = status;
+    if (reviewPeriod) whereClause.reviewPeriod = reviewPeriod;
+
+    const reviews = await this.prisma.performanceReview.findMany({
+      where: whereClause,
+      include: {
+        lecturer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewedByUser: {
+          include: {
+            user: true,
+          },
+        },
+      },
+      orderBy: {
+        reviewDate: 'desc',
+      },
+    });
+
+    return reviews;
+  }
+
+  /**
+   * Get a specific performance review by ID
+   */
+  async getPerformanceReview(reviewId: string): Promise<any> {
+    const review = await this.prisma.performanceReview.findUnique({
+      where: { id: reviewId },
+      include: {
+        lecturer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewedByUser: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    if (!review) {
+      throw new NotFoundException(`Performance review not found: ${reviewId}`);
+    }
+
+    return review;
+  }
+
+  /**
+   * Create a new performance review
+   */
+  async createPerformanceReview(
+    lecturerId: string,
+    data: {
+      reviewPeriod: string;
+      reviewerId: string;
+      teachingScore?: number;
+      researchScore?: number;
+      serviceScore?: number;
+      leadershipScore?: number;
+      comments?: string;
+    },
+  ): Promise<any> {
+    // Validate lecturer exists
+    const lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: lecturerId },
+    });
+
+    if (!lecturer) {
+      throw new NotFoundException(`Lecturer not found: ${lecturerId}`);
+    }
+
+    // Validate reviewer exists
+    const reviewer = await this.prisma.user.findUnique({
+      where: { id: data.reviewerId },
+    });
+
+    if (!reviewer) {
+      throw new NotFoundException(`Reviewer not found: ${data.reviewerId}`);
+    }
+
+    // Calculate overall score if individual scores provided
+    const scores = [
+      data.teachingScore,
+      data.researchScore,
+      data.serviceScore,
+      data.leadershipScore,
+    ].filter((score): score is number => score !== null);
+
+    const overallScore =
+      scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
+
+    // Create performance review
+    const performanceReview = await this.prisma.performanceReview.create({
+      data: {
+        lecturerId,
+        reviewPeriod: data.reviewPeriod,
+        reviewerId: data.reviewerId,
+        teachingScore: data.teachingScore,
+        researchScore: data.researchScore,
+        serviceScore: data.serviceScore,
+        leadershipScore: data.leadershipScore,
+        overallScore,
+        comments: data.comments,
+        status: 'DRAFT',
+      },
+      include: {
+        lecturer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewedByUser: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return performanceReview;
+  }
+
+  /**
+   * Update a performance review
+   */
+  async updatePerformanceReview(
+    reviewId: string,
+    data: {
+      teachingScore?: number;
+      researchScore?: number;
+      serviceScore?: number;
+      leadershipScore?: number;
+      comments?: string;
+      status?: 'DRAFT' | 'PENDING_REVIEW' | 'REVIEWED' | 'FINALIZED';
+      reviewedById?: string;
+    },
+  ): Promise<any> {
+    // Validate performance review exists
+    const review = await this.prisma.performanceReview.findUnique({
+      where: { id: reviewId },
+    });
+
+    if (!review) {
+      throw new NotFoundException(`Performance review not found: ${reviewId}`);
+    }
+
+    // Calculate overall score if scores are being updated
+    let overallScore = review.overallScore;
+    const scoresToConsider = [
+      data.teachingScore ?? review.teachingScore,
+      data.researchScore ?? review.researchScore,
+      data.serviceScore ?? review.serviceScore,
+      data.leadershipScore ?? review.leadershipScore,
+    ];
+
+    const validScores = scoresToConsider.filter((score): score is number => score !== null);
+    if (validScores.length > 0) {
+      overallScore =
+        validScores.reduce((sum, score) => sum + score, 0) / validScores.length;
+    }
+
+    // Update performance review
+    const updatedReview = await this.prisma.performanceReview.update({
+      where: { id: reviewId },
+      data: {
+        teachingScore: data.teachingScore,
+        researchScore: data.researchScore,
+        serviceScore: data.serviceScore,
+        leadershipScore: data.leadershipScore,
+        overallScore,
+        comments: data.comments,
+        status: data.status,
+        reviewedAt: data.status === 'FINALIZED' ? new Date() : undefined,
+        reviewedById: data.reviewedById,
+      },
+      include: {
+        lecturer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewer: {
+          include: {
+            user: true,
+          },
+        },
+        reviewedByUser: {
+          include: {
+            user: true,
+          },
+        },
+      },
+    });
+
+    return updatedReview;
+  }
+
+  /**
+   * Get performance review statistics for a lecturer
+   */
+  async getLecturerPerformanceStatistics(lecturerId: string): Promise<any> {
+    // Validate lecturer exists
+    const lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: lecturerId },
+    });
+
+    if (!lecturer) {
+      throw new NotFoundException(`Lecturer not found: ${lecturerId}`);
+    }
+
+    const reviews = await this.prisma.performanceReview.findMany({
+      where: { lecturerId },
+      select: {
+        teachingScore: true,
+        researchScore: true,
+        serviceScore: true,
+        leadershipScore: true,
+        overallScore: true,
+        status: true,
+      },
+    });
+
+    if (reviews.length === 0) {
+      return {
+        lecturerId,
+        lecturerName: lecturer.user?.name || 'Unknown',
+        totalReviews: 0,
+        averageScores: {
+          teaching: null,
+          research: null,
+          service: null,
+          leadership: null,
+          overall: null,
+        },
+        statusDistribution: {},
+      };
+    }
+
+    // Calculate averages
+    const teachingScores = reviews
+      .map((r) => r.teachingScore)
+      .filter((score): score is number => score !== null);
+    const researchScores = reviews
+      .map((r) => r.researchScore)
+      .filter((score): score is number => score !== null);
+    const serviceScores = reviews
+      .map((r) => r.serviceScore)
+      .filter((score): score is number => score !== null);
+    const leadershipScores = reviews
+      .map((r) => r.leadershipScore)
+      .filter((score): score is number => score !== null);
+    const overallScores = reviews
+      .map((r) => r.overallScore)
+      .filter((score): score is number => score !== null);
+
+    const statusDistribution = reviews.reduce((acc, review) => {
+      acc[review.status] = (acc[review.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return {
+      lecturerId,
+      lecturerName: lecturer.user?.name || 'Unknown',
+      totalReviews: reviews.length,
+      averageScores: {
+        teaching:
+          teachingScores.length > 0
+            ? teachingScores.reduce((sum, score) => sum + score, 0) / teachingScores.length
+            : null,
+        research:
+          researchScores.length > 0
+            ? researchScores.reduce((sum, score) => sum + score, 0) / researchScores.length
+            : null,
+        service:
+          serviceScores.length > 0
+            ? serviceScores.reduce((sum, score) => sum + score, 0) / serviceScores.length
+            : null,
+        leadership:
+          leadershipScores.length > 0
+            ? leadershipScores.reduce((sum, score) => sum + score, 0) / leadershipScores.length
+            : null,
+        overall:
+          overallScores.length > 0
+            ? overallScores.reduce((sum, score) => sum + score, 0) / overallScores.length
+            : null,
+      },
+      statusDistribution,
+    };
+  }
 }
