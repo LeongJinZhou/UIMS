@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma.service';
+import { PrismaService } from '../../../database/prisma.service';
 
 @Injectable()
 export class TimetableAIService {
@@ -24,12 +24,12 @@ export class TimetableAIService {
               },
             },
             section: true,
-            venue: { include: { rooms: true } },
+            venue: { include: { venue: true } },
           },
-          orderBy: {
-            dayOfWeek: 'asc',
-            startTime: 'asc',
-          },
+          orderBy: [
+            { dayOfWeek: 'asc' },
+            { startTime: 'asc' },
+          ],
         },
       },
     });
@@ -87,9 +87,9 @@ export class TimetableAIService {
       suggestions,
       totalSlots: timetable.slots.length,
       analysis: {
-        roomsUsed: [...new Set(timetable.slots.map(s => s.venueId))].length,
-        lecturersInvolved: [...new Set(timetable.slots.map(s => s.courseOffering.lecturerId))].length,
-        totalCourseOfferings: [...new Set(timetable.slots.map(s => s.courseOfferingId))].length,
+        roomsUsed: [...new Set(timetable.slots.map((s: any) => s.venueId))].length,
+        lecturersInvolved: [...new Set(timetable.slots.map((s: any) => s.courseOffering.lecturerId))].length,
+        totalCourseOfferings: [...new Set(timetable.slots.map((s: any) => s.courseOfferingId))].length,
       },
       nextSteps: [
         'Implement detailed room utilization analysis',

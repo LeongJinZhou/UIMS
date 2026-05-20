@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Bell, Calendar, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, BarChart2, Bell, Calendar, Check, Clock, UserPlus, Users, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -155,7 +155,7 @@ export function HrDashboard() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" sideOffset={4}>
-                <DropdownMenuItem onClick={() => /* handle refresh */}>
+                <DropdownMenuItem onClick={() => { /* handle refresh */ }}>
                   Refresh
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -220,7 +220,7 @@ export function HrDashboard() {
                         {review.reviewPeriod} Performance Review
                       </div>
                     </div>
-                    <Badge variant="secondary" size="sm">
+                    <Badge variant="secondary">
                       PENDING_REVIEW
                     </Badge>
                   </div>
@@ -245,28 +245,28 @@ export function HrDashboard() {
           <CardContent className="space-y-3">
             <Button
               variant="outline"
-              onClick={() => /* navigate to lecturer management */}
+              onClick={() => { /* navigate to lecturer management */ }}
               className="w-full justify-start"
             >
               Manage Lecturers
             </Button>
             <Button
               variant="outline"
-              onClick={() => /* navigate to leave management */}
+              onClick={() => { /* navigate to leave management */ }}
               className="w-full justify-start"
             >
               Manage Leave Requests
             </Button>
             <Button
               variant="outline"
-              onClick={() => /* navigate to performance reviews */}
+              onClick={() => { /* navigate to performance reviews */ }}
               className="w-full justify-start"
             >
               Manage Performance Reviews
             </Button>
             <Button
               variant="outline"
-              onClick={() => /* navigate to reports */}
+              onClick={() => { /* navigate to reports */ }}
               className="w-full justify-start"
             >
               HR Reports
@@ -297,7 +297,7 @@ export function HrDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <BarChart className="h-5 w-5 text-green-500" />
+              <BarChart2 className="h-5 w-5 text-green-500" />
               <span>Workload Overview</span>
             </CardTitle>
           </CardHeader>

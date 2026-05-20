@@ -68,7 +68,7 @@ export class IntegrationService {
     const semester = await this.prisma.semester.findUnique({
       where: { id: semesterId },
       include: {
-        courseOfferings: {
+        offerings: {
           include: {
             course: true,
             lecturer: true,

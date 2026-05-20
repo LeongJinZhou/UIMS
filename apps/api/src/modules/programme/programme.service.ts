@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../database/prisma.service';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as csv from 'csv-parser';
+import csv from 'csv-parser';
 
 @Injectable()
 export class ProgrammeService {
@@ -18,13 +18,13 @@ export class ProgrammeService {
       throw new NotFoundException(`File not found: ${filePath}`);
     }
 
-    const results = [];
+    const results: any[] = [];
 
     // Read and parse CSV file
     return new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
-        .on('data', (data) => results.push(data))
+        .on('data', (data: any) => results.push(data))
         .on('end', async () => {
           try {
             await this.processMqaData(results);
@@ -32,11 +32,11 @@ export class ProgrammeService {
               message: 'MQA course structure imported successfully',
               recordsProcessed: results.length
             });
-          } catch (error) {
+          } catch (error: any) {
             reject(error);
           }
         })
-        .on('error', (error) => {
+        .on('error', (error: any) => {
           reject(error);
         });
     });
@@ -50,7 +50,7 @@ export class ProgrammeService {
     const groupedData = this.groupByProgrammeAndVersion(data);
 
     for (const [programmeKey, programmeData] of Object.entries(groupedData)) {
-      const { programmeCode, version } = programmeKey;
+      const [programmeCode, version] = programmeKey.split('|');
 
       // Find or create faculty (assuming we need to map from programmeCode or have faculty info)
       // For now, we'll need facultyId - in a real system, this would come from the data or mapping
@@ -121,7 +121,7 @@ export class ProgrammeService {
         }
 
         // Process courses in this semester
-        let totalCredons = 0;
+        let totalCredits = 0;
 
         for (const courseData of semesterData) {
           // Find course by code
@@ -151,13 +151,13 @@ export class ProgrammeService {
             },
           });
 
-          totalCredons += course.creditHours;
+          totalCredits += course.creditHours;
         }
 
         // Update semester plan with total credits
         await this.prisma.mqaSemesterPlan.update({
           where: { id: mqaSemesterPlan.id },
-          data: { totalCredons },
+          data: { totalCredits },
         });
 
         // Update programme total credits (sum of all semesters)
@@ -173,10 +173,14 @@ export class ProgrammeService {
     const programmeVersion = await this.prisma.programmeVersion.findUnique({
       where: { id: versionId },
       include: {
-        programme: true,
+        programme: {
+          include: {
+            faculty: true,
+          },
+        },
         semesterPlans: {
           include: {
-            mqaPlanCourses: {
+            courses: {
               include: {
                 course: true,
               },
@@ -203,8 +207,8 @@ export class ProgrammeService {
     let totalCourses = 0;
     let electiveCourses = 0;
 
-    for (const semesterPlan of programmeVersion.semesterPlans) {
-      for (const planCourse of semesterPlan.mqaPlanCourses) {
+    for (const semesterPlan of (programmeVersion.semesterPlans as any[])) {
+      for (const planCourse of semesterPlan.courses) {
         totalCourses++;
         totalCredits += planCourse.course.creditHours;
         if (planCourse.isElective) {
@@ -237,10 +241,10 @@ export class ProgrammeService {
         totalCredits,
         electiveCourses,
         coreCourses: totalCourses - electiveCourses,
-        semesters: programmeVersion.semesterPlans.map((semester) => ({
+        semesters: (programmeVersion.semesterPlans as any[]).map((semester: any) => ({
           semesterNumber: semester.semesterNumber,
           totalCredits: semester.totalCredits,
-          courses: semester.mqaPlanCourses.map((planCourse) => ({
+          courses: semester.courses.map((planCourse: any) => ({
             id: planCourse.id,
             course: {
               id: planCourse.course.id,
@@ -270,7 +274,7 @@ export class ProgrammeService {
             semesterNumber,
           },
           include: {
-            mqaPlanCourses: {
+            courses: {
               include: {
                 course: true,
               },
@@ -289,7 +293,7 @@ export class ProgrammeService {
       throw new NotFoundException(`Programme version not found: ${versionId}`);
     }
 
-    const semesterPlan = programmeVersion.semesterPlans[0];
+    const semesterPlan: any = programmeVersion.semesterPlans[0];
     if (!semesterPlan) {
       throw new NotFoundException(`Semester ${semesterNumber} not found for version ${versionId}`);
     }
@@ -299,7 +303,7 @@ export class ProgrammeService {
     let totalCourses = 0;
     let electiveCourses = 0;
 
-    for (const planCourse of semesterPlan.mqaPlanCourses) {
+    for (const planCourse of semesterPlan.courses) {
       totalCourses++;
       totalCredits += planCourse.course.creditHours;
       if (planCourse.isElective) {
@@ -321,7 +325,7 @@ export class ProgrammeService {
         semesterNumber: semesterPlan.semesterNumber,
         totalCredits: semesterPlan.totalCredits,
       },
-      courses: semesterPlan.mqaPlanCourses.map((planCourse) => ({
+      courses: semesterPlan.courses.map((planCourse: any) => ({
         id: planCourse.id,
         course: {
           id: planCourse.course.id,

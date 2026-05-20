@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Bell, Calendar, CreditCard, DollarSign, TrendingUp, Users } from 'lucide-react';
+import { AlertTriangle, Bell, Calendar, Check, CreditCard, DollarSign, Edit, RefreshCw, TrendingUp, Users } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -215,9 +215,9 @@ export function FinanceDashboard() {
                 <DropdownMenuItem onClick={() => handleApproveExpense(pendingExpenses[0]?.id)}>
                   Approve Oldest
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => /* refresh */}>
+                <DropdownMenuItem onClick={() => { /* refresh */ }}>
                   Refresh List
-                </DropdownMenuContent>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </CardHeader>
@@ -409,7 +409,7 @@ export function FinanceDashboard() {
                           <Button
                             variant="outline"
                             size="icon"
-                            onClick={() => /* navigate to invoice details */}
+                            onClick={() => { /* navigate to invoice details */ }}
                             aria-label="View invoice"
                           >
                             <Edit className="h-4 w-4 text-blue-500" />

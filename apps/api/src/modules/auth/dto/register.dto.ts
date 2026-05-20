@@ -1,5 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum } from 'class-validator';
-import { UserRole } from '../../database/user.entity';
+import { UserRole } from '@prisma/client';
 
 export class RegisterDto {
   @IsEmail()

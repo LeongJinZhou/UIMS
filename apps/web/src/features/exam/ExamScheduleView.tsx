@@ -1,8 +1,9 @@
 import React from 'react';
-import { Card, Table, Badge, Tag, Spin } from 'antd';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { format } from 'date-fns';
 
 interface ExamSlot {
   id: string;
@@ -25,9 +26,9 @@ interface ExamSlot {
       name: string;
     };
   };
-  date: string; // ISO date string
-  startTime: string; // HH:MM format
-  endTime: string; // HH:MM format
+  date: string;
+  startTime: string;
+  endTime: string;
   durationMinutes: number;
   expectedAttendance: number;
 }
@@ -41,66 +42,63 @@ const ExamScheduleView: React.FC = () => {
     },
   });
 
-  if (isLoading) return <Spin tip="Loading exam schedule..." />;
-  if (error) return <div>Error loading exam schedule</div>;
+  if (isLoading) return <div className="p-6">Loading exam schedule...</div>;
+  if (error) return <div className="p-6 text-destructive">Error loading exam schedule</div>;
 
   // Sort by date and time
-  const sortedSlots = (data || []).sort((a, b) => {
+  const sortedSlots = (data || []).sort((a: ExamSlot, b: ExamSlot) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
     return a.startTime.localeCompare(b.startTime);
   });
 
   return (
-    <Card title="Examination Schedule" bordered={false}>
-      <Table
-        columns={[
-          {
-            title: 'Date',
-            dataIndex: 'date',
-            key: 'date',
-          },
-          {
-            title: 'Time',
-            dataIndex: 'timeSlot',
-            key: 'timeSlot',
-          },
-          {
-            title: 'Course',
-            dataIndex: 'course',
-            key: 'course',
-          },
-          {
-            title: 'Venue',
-            dataIndex: 'venue',
-            key: 'venue',
-          },
-          {
-            title: 'Invigilator',
-            dataIndex: 'invigilator',
-            key: 'invigilator',
-          },
-          {
-            title: 'Expected Attendance',
-            dataIndex: 'expectedAttendance',
-            key: 'expectedAttendance',
-          },
-          {
-            title: 'Duration',
-            dataIndex: 'duration',
-            key: 'duration',
-          },
-        ]}
-        dataSource={sortedSlots.map(slot => ({
-          ...slot,
-          date: new Date(slot.date).toLocaleDateString(),
-          timeSlot: `${slot.startTime} - ${slot.endTime}`,
-          course: `${slot.courseOffering.course.code} - ${slot.courseOffering.course.name}`,
-          venue: slot.venue.rooms.map(r => `${r.code} (${r.name})`).join(', '),
-          invigilator: slot.invigilator.user?.name || 'TBA',
-          duration: `${slot.durationMinutes} min`,
-        }))}
-        pagination={false}
-      />
+    <Card>
+      <CardHeader>
+        <CardTitle>Examination Schedule</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Time</TableHead>
+              <TableHead>Course</TableHead>
+              <TableHead>Venue</TableHead>
+              <TableHead>Invigilator</TableHead>
+              <TableHead className="text-right">Attendance</TableHead>
+              <TableHead className="text-right">Duration</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedSlots.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  No exam schedule available
+                </TableCell>
+              </TableRow>
+            ) : (
+              sortedSlots.map((slot: ExamSlot) => (
+                <TableRow key={slot.id}>
+                  <TableCell>{new Date(slot.date).toLocaleDateString()}</TableCell>
+                  <TableCell className="font-mono text-sm">{slot.startTime} - {slot.endTime}</TableCell>
+                  <TableCell>
+                    <div className="font-semibold">{slot.courseOffering.course.code}</div>
+                    <div className="text-sm text-muted-foreground">{slot.courseOffering.course.name}</div>
+                  </TableCell>
+                  <TableCell>
+                    {slot.venue.rooms.map((r: { code: string; name: string }) => `${r.code} (${r.name})`).join(', ')}
+                  </TableCell>
+                  <TableCell>{slot.invigilator.user?.name || 'TBA'}</TableCell>
+                  <TableCell className="text-right">{slot.expectedAttendance}</TableCell>
+                  <TableCell className="text-right">
+                    <Badge variant="outline">{slot.durationMinutes} min</Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
     </Card>
   );
 };

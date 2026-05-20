@@ -21,7 +21,6 @@ export class VenueService {
           where: { isActive: true },
         },
       },
-      where: { isActive: true },
     });
 
     return venues;
@@ -464,6 +463,7 @@ export class VenueService {
     // Validate room exists
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
+      include: { venue: true },
     });
 
     if (!room) {
@@ -510,7 +510,7 @@ export class VenueService {
           floor: room.venue.floor,
         },
       },
-      maintenanceBlocks: maintenanceBlocks.map(mb => ({
+      maintenanceBlocks: maintenanceBlocks.map((mb: any) => ({
         id: mb.id,
         startDate: mb.startDate,
         endDate: mb.endDate,
@@ -532,6 +532,7 @@ export class VenueService {
     // Validate room exists
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
+      include: { venue: true },
     });
 
     if (!room) {
@@ -576,7 +577,7 @@ export class VenueService {
           floor: room.venue.floor,
         },
       },
-      bookings: bookings.map(b => ({
+      bookings: bookings.map((b: any) => ({
         id: b.id,
         date: b.date,
         startTime: b.startTime,

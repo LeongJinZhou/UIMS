@@ -26,7 +26,9 @@ describe('FinanceService', () => {
             },
             invoice: {
               findMany: jest.fn(),
+              findUnique: jest.fn(),
               create: jest.fn(),
+              update: jest.fn(),
               aggregate: jest.fn(),
               count: jest.fn(),
             },
@@ -163,11 +165,14 @@ describe('FinanceService', () => {
 
       expect(result).toEqual(mockFee);
       expect(prismaService.fee.create).toHaveBeenCalledWith({
-        studentId: 'student-1',
-        feeType: 'TUITION',
-        amount: 1000,
-        description: 'Tuition Fee',
-        semesterId: 'semester-1',
+        data: {
+          studentId: 'student-1',
+          feeType: 'TUITION',
+          amount: 1000,
+          description: 'Tuition Fee',
+          semesterId: 'semester-1',
+          creditHours: undefined,
+        },
       });
     });
 
@@ -239,12 +244,14 @@ describe('FinanceService', () => {
 
       expect(result).toEqual(mockInvoice);
       expect(prismaService.invoice.create).toHaveBeenCalledWith({
-        studentId: 'student-1',
-        semesterId: 'semester-1',
-        totalAmount: 1000,
-        dueDate: new Date('2026-06-30'),
-        issuedAt: expect.any(Date),
-        status: 'UNPAID',
+        data: {
+          studentId: 'student-1',
+          semesterId: 'semester-1',
+          totalAmount: 1000,
+          dueDate: new Date('2026-06-30'),
+          issuedAt: expect.any(Date),
+          status: 'UNPAID',
+        },
       });
     });
 
@@ -327,12 +334,14 @@ describe('FinanceService', () => {
         },
       });
       expect(prismaService.payment.create).toHaveBeenCalledWith({
-        invoiceId: 'invoice-1',
-        amount: 500,
-        method: 'ONLINE',
-        status: 'COMPLETED',
-        paidAt: expect.any(Date),
-        reference: 'ref-123',
+        data: {
+          invoiceId: 'invoice-1',
+          amount: 500,
+          method: 'ONLINE',
+          status: 'PARTIAL',
+          paidAt: expect.any(Date),
+          reference: 'ref-123',
+        },
       });
       expect(prismaService.invoice.update).toHaveBeenCalledWith({
         where: { id: 'invoice-1' },
@@ -413,10 +422,14 @@ describe('FinanceService', () => {
   describe('getFinanceDashboard', () => {
     it('should return finance dashboard statistics', async () => {
       prismaService.fee.count.mockResolvedValue(150);
-      prismaService.invoice.count.mockResolvedValue(120);
-      prismaService.invoice.aggregate.mockResolvedValue({ _sum: { paidAmount: 80000 } });
-      prismaService.invoice.aggregate.mockResolvedValueOnce({ _sum: { balance: 20000 } });
-      prismaService.invoice.count.mockResolvedValueOnce(10); // overdue
+      
+      prismaService.invoice.count
+        .mockResolvedValueOnce(120)
+        .mockResolvedValueOnce(10); // overdue
+        
+      prismaService.invoice.aggregate
+        .mockResolvedValueOnce({ _sum: { paidAmount: 80000 } })
+        .mockResolvedValueOnce({ _sum: { balance: 20000 } });
 
       const result = await service.getFinanceDashboard();
 
@@ -432,10 +445,14 @@ describe('FinanceService', () => {
 
     it('should handle zero division in collection rate', async () => {
       prismaService.fee.count.mockResolvedValue(0);
-      prismaService.invoice.count.mockResolvedValue(0);
-      prismaService.invoice.aggregate.mockResolvedValue({ _sum: { paidAmount: 0 } });
-      prismaService.invoice.aggregate.mockResolvedValueOnce({ _sum: { balance: 0 } });
-      prismaService.invoice.count.mockResolvedValueOnce(0);
+      
+      prismaService.invoice.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+        
+      prismaService.invoice.aggregate
+        .mockResolvedValueOnce({ _sum: { paidAmount: 0 } })
+        .mockResolvedValueOnce({ _sum: { balance: 0 } });
 
       const result = await service.getFinanceDashboard();
 

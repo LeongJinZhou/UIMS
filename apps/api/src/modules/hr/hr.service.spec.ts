@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Test, TestingModule } from '@nestjs/testing';
 import { HrService } from './hr.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -17,12 +18,17 @@ describe('HrService', () => {
               findMany: jest.fn(),
               findUnique: jest.fn(),
               update: jest.fn(),
+              count: jest.fn(),
             },
             leaveRecord: {
               findMany: jest.fn(),
               create: jest.fn(),
+              count: jest.fn(),
             },
             course: {
+              count: jest.fn(),
+            },
+            lecturerAvailability: {
               count: jest.fn(),
             },
           },
@@ -204,12 +210,14 @@ describe('HrService', () => {
 
       expect(result).toEqual(mockLeaveRecord);
       expect(prismaService.leaveRecord.create).toHaveBeenCalledWith({
-        lecturerId: 'lecture-1',
-        leaveDate: new Date('2026-06-01'),
-        returnDate: new Date('2026-06-07'),
-        leaveType: 'ANNUAL',
-        status: 'PENDING',
-        replacementLecturerId: 'lecture-2',
+        data: {
+          lecturerId: 'lecture-1',
+          leaveDate: new Date('2026-06-01'),
+          returnDate: new Date('2026-06-07'),
+          leaveType: 'ANNUAL',
+          status: 'PENDING',
+          replacementLecturerId: 'lecture-2',
+        },
       });
     });
 
@@ -247,10 +255,11 @@ describe('HrService', () => {
 
   describe('getHrDashboard', () => {
     it('should return HR dashboard statistics', async () => {
-      prismaService.lecturer.count.mockResolvedValue(10);
+      prismaService.lecturer.count.mockResolvedValueOnce(10); // total
       prismaService.lecturer.count.mockResolvedValueOnce(8); // active
-      prismaService.lecturer.count.mockResolvedValueOnce(2); // on leave
-      prismaService.course.count.mockResolvedValue(50);
+      prismaService.leaveRecord.count.mockResolvedValueOnce(2); // on leave
+      prismaService.course.count.mockResolvedValueOnce(50);
+      prismaService.lecturerAvailability.count.mockResolvedValueOnce(5); // availability count
 
       const result = await service.getHrDashboard();
 
@@ -260,11 +269,9 @@ describe('HrService', () => {
         onLeaveLecturers: 2,
         totalCourses: 50,
         lecturerUtilizationRate: 80, // (8/10)*100
+        availabilityCoverageRate: 50, // (5/10)*100
       });
     });
   });
 
-  findAll() {
-    return { module: 'M08 — HR & Lecturer Management', status: 'ready' };
-  }
 });

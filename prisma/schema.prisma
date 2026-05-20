@@ -16,14 +16,12 @@
 // ============================================
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [pgvector(map: "vector")]
 }
 
 // =============================================
@@ -45,6 +43,10 @@ model User {
   student    Student?
   lecturer   Lecturer?
   notifications Notification[]
+  sessions           Session[]
+  reviewsGiven       PerformanceReview[] @relation("ReviewerOnPerformanceReview")
+  reviewsFinalized   PerformanceReview[] @relation("ReviewedByOnPerformanceReview")
+  expenses           Expense[]
 
   @@map("users")
 }
@@ -76,6 +78,7 @@ model Department {
   faculties Faculty[] @relation("FacultyOnDepartment")
   lecturers Lecturer[] @relation("LecturerOnDepartment")
   programmes Programme[] @relation("ProgrammeOnDepartment")
+  budgets    Budget[]
 
   @@map("departments")
 }
@@ -110,11 +113,13 @@ model Programme {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  faculty     Faculty             @relation("FacultyOnDepartment", fields: [facultyId], references: [id])
+  faculty     Faculty             @relation(fields: [facultyId], references: [id])
   department  Department?         @relation("ProgrammeOnDepartment", fields: [departmentId], references: [id])
   versions    ProgrammeVersion[]
   courses     Course[]
   students    Student[]
+  budgets     Budget[]
+  feeStructures FeeStructure[]
 
   @@map("programmes")
 }
@@ -163,6 +168,7 @@ model MqaPlanCourse {
   semesterPlan MqaSemesterPlan @relation(fields: [semesterPlanId], references: [id])
   course       Course          @relation(fields: [courseId], references: [id])
 
+  @@unique([semesterPlanId, courseId])
   @@map("mqa_plan_courses")
 }
 
@@ -349,6 +355,7 @@ model Semester {
   offerings  CourseOffering[]
   timetables Timetable[]
   enrolments Enrolment[]
+  examTimetables ExamTimetable[]
 
   @@map("semesters")
 }
@@ -375,6 +382,7 @@ model CourseOffering {
   enrolments Enrolment[]
   examResults ExamResult[]
   timetableSlots TimetableSlot[]
+  examTimetableSlots ExamTimetableSlot[]
 
   @@unique([courseId, semesterId])
   @@map("course_offerings")
@@ -456,6 +464,7 @@ model Venue {
   floor    Int
 
   rooms Room[]
+  examTimetableSlots ExamTimetableSlot[]
 
   @@map("venues")
 }
@@ -474,6 +483,7 @@ model Room {
   equipment  RoomEquipment[]
   timetableSlots TimetableSlot[]
   maintenanceBlocks MaintenanceBlock[]
+  bookings           RoomBooking[]
 
   @@map("rooms")
 }
@@ -517,6 +527,8 @@ model MaintenanceBlock {
   startDate DateTime
   endDate   DateTime
   reason    String
+  scheduledBy String
+  createdAt DateTime @default(now())
 
   room Room @relation(fields: [roomId], references: [id])
 
@@ -701,6 +713,7 @@ model Lecturer {
   userId          String       @unique
   staffId         String       @unique
   facultyId       String
+  departmentId    String?
   department      Department? @relation("LecturerOnDepartment", fields: [departmentId], references: [id])
   contractType    ContractType @default(FULL_TIME)
   maxTeachingLoad Int          // Max credit hours per semester
@@ -714,6 +727,8 @@ model Lecturer {
   leaveRecords   LeaveRecord[]
   offerings      CourseOffering[]
   cancellations  Cancellation[]
+  performanceReviews PerformanceReview[] @relation("LecturerOnPerformanceReview")
+  invigilatedExams   ExamTimetableSlot[]
 
   @@map("lecturers")
 }
@@ -784,7 +799,7 @@ model PerformanceReview {
 
   lecturer Lecturer @relation("LecturerOnPerformanceReview", fields: [lecturerId], references: [id])
   reviewer User @relation("ReviewerOnPerformanceReview", fields: [reviewerId], references: [id])
-  reviewedBy User @relation("ReviewedByOnPerformanceReview", fields: [reviewedById], references: [id])
+  reviewedBy User? @relation("ReviewedByOnPerformanceReview", fields: [reviewedById], references: [id])
 
   @@map("performance_reviews")
 }
@@ -928,6 +943,7 @@ model Budget {
 
   department  Department? @relation(fields: [departmentId], references: [id])
   programme   Programme? @relation(fields: [programmeId], references: [id])
+  lines       BudgetLine[]
 
   @@map("budgets")
 }
@@ -943,6 +959,7 @@ model BudgetLine {
   endDate     DateTime?
 
   budget Budget @relation(fields: [budgetId], references: [id])
+  expenses Expense[]
 
   @@map("budget_lines")
 }
@@ -957,6 +974,24 @@ model FinancialReport {
   fileUrl       String?  // URL to exported file (PDF/Excel) if applicable
 
   @@map("financial_reports")
+}
+
+model Expense {
+  id           String      @id @default(cuid())
+  budgetLineId String
+  amount       Float
+  description  String
+  expenseDate  DateTime    @default(now())
+  incurredBy   String
+  receiptUrl   String?
+  status       String      @default("PENDING") // PENDING, APPROVED, REIMBURSED, REJECTED
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  budgetLine     BudgetLine @relation(fields: [budgetLineId], references: [id])
+  incurredByUser User       @relation(fields: [incurredBy], references: [id])
+
+  @@map("expenses")
 }
 
 // =============================================

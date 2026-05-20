@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Calendar, Check, DollarSign, Users, Warning } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, DollarSign, Plus, Users } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -94,7 +94,7 @@ export function AppealPreAssessmentDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Warning className="h-5 w-5 text-orange-500" />
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
               <span>Pending Reviews</span>
             </CardTitle>
           </CardHeader>
@@ -157,20 +157,20 @@ export function AppealPreAssessmentDashboard() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={4}>
-              <DropdownMenuItem onClick={() => /* filter by date */}>
+              <DropdownMenuItem onClick={() => { /* filter by date */ }}>
                 Last 7 Days
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => /* filter by type */}>
+              <DropdownMenuItem onClick={() => { /* filter by type */ }}>
                 Grade Appeals
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => /* filter by type */}>
+              <DropdownMenuItem onClick={() => { /* filter by type */ }}>
                 Prerequisite Waivers
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => /* filter by type */}>
+              <DropdownMenuItem onClick={() => { /* filter by type */ }}>
                 Late Withdrawals
               </DropdownMenuItem>
               <Separator />
-              <DropdownMenuItem onClick={() => /* export */}>
+              <DropdownMenuItem onClick={() => { /* export */ }}>
                 Export Report
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => loadAssessmentHistory()}>
@@ -180,39 +180,38 @@ export function AppealPreAssessmentDashboard() {
           </DropdownMenu>
         </CardHeader>
         <CardContent>
-          {loadingHistory ? (
+          {loadingHistory && (
             <div className="text-center py-8">Loading assessment history...</div>
-          ) : (
-            assessmentHistory.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No assessments completed yet.
-                <Button variant="outline" onClick={handleNewAssessment} className="mt-4">
-                  Create First Assessment
-                </Button>
-              </div>
-            ) : (
-              <Table className="w-full">
-                <TableHeader>
-                  <TableRow>
-                    <TableHeader className="w-20">Assessment ID</TableHeader>
-                    <TableHeader>Student</TableHeader>
-                    <TableHeader className="w-20">Appeal Type</TableHeader>
-                    <TableHeader className="w-16">Eligibility</TableHeader>
-                    <TableHeader className="w-16">Success Likelihood</TableHeader>
-                    <TableHeader className="w-16">Date</TableHeader>
-                    <TableHeader className="w-16">Actions</TableHeader>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {/* Assessment rows would go here */}
-                  <TableRow>
-                    <TableCell colSpan="7" className="text-center py-8 text-muted-foreground">
-                      No assessment data available
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            )}
+          )}
+          {!loadingHistory && assessmentHistory.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              No assessments completed yet.
+              <Button variant="outline" onClick={handleNewAssessment} className="mt-4">
+                Create First Assessment
+              </Button>
+            </div>
+          )}
+          {!loadingHistory && assessmentHistory.length > 0 && (
+            <Table className="w-full">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Assessment ID</TableHead>
+                  <TableHead>Student</TableHead>
+                  <TableHead className="w-20">Appeal Type</TableHead>
+                  <TableHead className="w-16">Eligibility</TableHead>
+                  <TableHead className="w-16">Success Likelihood</TableHead>
+                  <TableHead className="w-16">Date</TableHead>
+                  <TableHead className="w-16">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No assessment data available
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

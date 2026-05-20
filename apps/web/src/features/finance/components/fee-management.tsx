@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -10,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, Check, Edit, Plus, Trash2, Users, DollarSign } from 'lucide-react';
+import { Calendar, Check, CreditCard, Download, Edit, Plus, Trash2, Users, DollarSign } from 'lucide-react';
 
 export function FeeManagement() {
   const queryClient = useQueryClient();
@@ -176,7 +177,7 @@ export function FeeManagement() {
               <Plus className="mr-2 h-4 w-4" /> Add Fee
             </Button>
           </DialogTrigger>
-          <Button variant="outline" onClick={() => /* export functionality */}>
+          <Button variant="outline" onClick={() => { /* export functionality */ }}>
             <Download className="mr-2 h-4 w-4" /> Export
           </Button>
         </div>
@@ -308,7 +309,7 @@ export function FeeManagement() {
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => /* navigate to payment */ }
+                        onClick={() => { /* navigate to payment */ }}
                         aria-label="Process payment"
                       >
                         <CreditCard className="h-4 w-4 text-green-500" />
@@ -343,7 +344,7 @@ export function FeeManagement() {
               </DialogDescription>
             </DialogHeader>
             <DialogContent>
-              <Divider className="mb-4" />
+              <Separator className="mb-4" />
               {selectedAction === 'view' && feeDetails && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

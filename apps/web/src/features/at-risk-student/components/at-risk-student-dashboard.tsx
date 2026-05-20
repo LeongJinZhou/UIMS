@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, BarChart2, Calendar, Check, DollarSign, Users, Warning } from 'lucide-react';
+import { AlertTriangle, BarChart2, Bell, Calendar, Check, DollarSign, Users } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -74,12 +74,14 @@ export function AtRiskStudentDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             {riskSummary ? (
-              <div className="text-2xl font-bold">
-                {riskSummary.totalStudentsAnalyzed}
-              </div>
-              <div className="text-sm font-medium text-muted-foreground">
-                Total Students
-              </div>
+              <>
+                <div className="text-2xl font-bold">
+                  {riskSummary.totalStudentsAnalyzed}
+                </div>
+                <div className="text-sm font-medium text-muted-foreground">
+                  Total Students
+                </div>
+              </>
             ) : (
               <div className="text-center py-4">No data</div>
             )}
@@ -90,7 +92,7 @@ export function AtRiskStudentDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              <Warning className="h-5 w-5 text-orange-500" />
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
               <span>At-Risk Students</span>
             </CardTitle>
           </CardHeader>
@@ -120,12 +122,14 @@ export function AtRiskStudentDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             {riskSummary ? (
-              <div className="text-2xl font-bold text-red-600">
-                {riskSummary.summary?.highRisk ?? 0}
-              </div>
-              <div className="text-sm font-medium text-muted-foreground">
-                Requires immediate intervention
-              </div>
+              <>
+                <div className="text-2xl font-bold text-red-600">
+                  {riskSummary.summary?.highRisk ?? 0}
+                </div>
+                <div className="text-sm font-medium text-muted-foreground">
+                  Requires immediate intervention
+                </div>
+              </>
             ) : (
               <div className="text-center py-4">No data</div>
             )}
@@ -183,14 +187,14 @@ export function AtRiskStudentDashboard() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={4}>
-              <DropdownMenuItem onClick={() => /* refresh */}>
+              <DropdownMenuItem onClick={() => { /* refresh */ }}>
                 Refresh Data
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => /* export */}>
+              <DropdownMenuItem onClick={() => { /* export */ }}>
                 Export Report
               </DropdownMenuItem>
               <Separator />
-              <DropdownMenuItem onClick={() => /* configure thresholds */}>
+              <DropdownMenuItem onClick={() => { /* configure thresholds */ }}>
                 Adjust Risk Thresholds
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -253,7 +257,7 @@ export function AtRiskStudentDashboard() {
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => /* view details */}
+                        onClick={() => { /* view details */ }}
                         aria-label="View student details"
                       >
                         <Check className="h-4 w-4 text-blue-500" />

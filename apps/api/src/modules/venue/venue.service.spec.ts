@@ -88,7 +88,6 @@ describe('VenueService', () => {
             where: { isActive: true },
           },
         },
-        where: { isActive: true },
       });
     });
   });

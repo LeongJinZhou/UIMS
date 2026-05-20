@@ -20,7 +20,7 @@ export class ProgrammeController {
 
   @Post('import-mqa')
   @UseInterceptors(FileInterceptor('file'))
-  async importMqaCourseStructure(@UploadedFile() file: Express.Multer.File) {
+  async importMqaCourseStructure(@UploadedFile() file: any) {
     if (!file) {
       throw new Error('No file uploaded');
     }

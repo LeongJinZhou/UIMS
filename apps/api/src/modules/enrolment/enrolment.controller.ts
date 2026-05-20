@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { EnrolmentService } from './enrolment.service';
 

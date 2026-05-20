@@ -57,7 +57,7 @@ export function DashboardLayout() {
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-200 dark:border-gray-800">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">Q</span>
+            <span className="text-white font-bold text-sm">U</span>
           </div>
           <div>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white">UIMS</h1>

@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../database/prisma.service';
+import { PrismaService } from '../../../database/prisma.service';
 
 @Injectable()
 export class MqaValidationService {
@@ -28,7 +28,7 @@ export class MqaValidationService {
         programme: true,
         semesterPlans: {
           include: {
-            mqaPlanCourses: {
+            courses: {
               include: {
                 course: true,
               },
@@ -87,7 +87,7 @@ export class MqaValidationService {
 
     // Calculate total credits
     const totalCredits = coursesWithDetails.reduce(
-      (sum, planCourse) => sum + planCourse.course.creditHours,
+      (sum: number, planCourse: any) => sum + planCourse.course.creditHours,
       0,
     );
 
@@ -122,7 +122,7 @@ export class MqaValidationService {
 
     // Validate elective balance (recommendation: max 50% electives)
     const electiveCount = coursesWithDetails.filter(
-      (pc) => pc.isElective,
+      (pc: any) => pc.isElective,
     ).length;
     const totalCourses = coursesWithDetails.length;
     const electiveRatio =
@@ -158,7 +158,7 @@ export class MqaValidationService {
         },
       });
 
-      const courseCodes = courses.map((pc) => pc.course.code);
+      const courseCodes = courses.map((pc: any) => pc.course.code);
       availableCoursesBySemester.set(
         semesterPlan.semesterNumber,
         new Set(courseCodes),
@@ -233,7 +233,7 @@ export class MqaValidationService {
     });
 
     const programmeCourseIds = new Set(
-      programmeCourses.map((c) => c.id),
+      programmeCourses.map((c: any) => c.id),
     );
 
     // Check each semester plan for courses not belonging to the programme
@@ -290,7 +290,7 @@ export class MqaValidationService {
         programme: true,
         semesterPlans: {
           include: {
-            mqaPlanCourses: {
+            courses: {
               include: {
                 course: true,
               },
@@ -300,25 +300,27 @@ export class MqaValidationService {
       },
     });
 
+    if (!programmeVersion) {
+      throw new BadRequestException(`Programme version not found: ${programmeVersionId}`);
+    }
+
     const totalSemesters = programmeVersion.semesterPlans.length;
     let totalCourses = 0;
     let totalCredits = 0;
 
-    for (const semesterPlan of programmeVersion.semesterPlans) {
-      const courses = await this.prisma.mqaPlanCourse.count({
+    for (const semesterPlan of (programmeVersion.semesterPlans as any[])) {
+      const coursesCount = await this.prisma.mqaPlanCourse.count({
         where: { semesterPlanId: semesterPlan.id },
       });
-      totalCourses += courses;
+      totalCourses += coursesCount;
 
-      const credits = await this.prisma.mqaPlanCourse.aggregate({
+      const planCourses = await this.prisma.mqaPlanCourse.findMany({
         where: { semesterPlanId: semesterPlan.id },
-        _sum: {
-          course: {
-            creditHours: true,
-          },
+        include: {
+          course: true,
         },
       });
-      totalCredits += credits._sum.course?.creditHours || 0;
+      totalCredits += planCourses.reduce((sum: number, pc: any) => sum + (pc.course?.creditHours || 0), 0);
     }
 
     return {

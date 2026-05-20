@@ -459,7 +459,7 @@ export class NotificationService {
         semesterId: data.semesterId,
         reason: data.reason,
         supportingDocuments: data.supportingDocuments,
-        status: data.status,
+        status: data.status ? (data.status as any) : undefined,
         reviewedBy: data.reviewedBy,
         approvedBy: data.approvedBy,
         aiAssessment: data.aiAssessment,

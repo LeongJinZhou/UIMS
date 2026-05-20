@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -10,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Toaster } from '@/components/ui/toaster';
 import { useToast } from '@/hooks/use-toast';
-import { Check, Edit, Plus, Trash2, Users } from 'lucide-react';
+import { BarChart, Calendar, Check, Edit, Plus, Trash2, Users } from 'lucide-react';
 
 export function LecturerManagement() {
   const queryClient = useQueryClient();
@@ -199,7 +200,7 @@ export function LecturerManagement() {
                     </TableCell>
                     <TableCell>{lecturer.department || 'Not Assigned'}</TableCell>
                     <TableCell>
-                      <Badge variant={lecturer.contractType === 'Full-Time' ? 'default' : lecturer.contractType === 'Part-Time' ? 'secondary' : 'outline'>
+                      <Badge variant={lecturer.contractType === 'Full-Time' ? 'default' : lecturer.contractType === 'Part-Time' ? 'secondary' : 'outline'}>
                         {lecturer.contractType}
                       </Badge>
                     </TableCell>
@@ -267,7 +268,7 @@ export function LecturerManagement() {
               </DialogDescription>
             </DialogHeader>
             <DialogContent>
-              <Divider className="mb-4" />
+              <Separator className="mb-4" />
               {selectedAction === 'view' && lecturerDetails && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

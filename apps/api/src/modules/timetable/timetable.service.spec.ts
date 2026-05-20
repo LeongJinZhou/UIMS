@@ -47,10 +47,11 @@ describe('TimetableService', () => {
       const mockSemester = {
         id: 'semester-1',
         label: '2026-S1',
-        courseOfferings: [
+        offerings: [
           {
             id: 'course-offering-1',
             course: { id: 'course-1', code: 'CS101', name: 'Intro to CS' },
+            lecturerId: 'lecturer-1',
             lecturer: { id: 'lecturer-1' },
             sections: [
               { id: 'section-1', sectionCode: 'A', combinedHeadcount: 30 },

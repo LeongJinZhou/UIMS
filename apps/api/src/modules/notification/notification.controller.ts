@@ -32,16 +32,14 @@ export class NotificationController {
       channel?: string;
       startDate?: string; // ISO date string
       endDate?: string; // ISO date string
-    } = {}
+    }
   ) {
     // Convert string dates to Date objects if provided
-    const processedFilters = { ...filters };
-    if (processedFilters.startDate) {
-      processedFilters.startDate = new Date(processedFilters.startDate);
-    }
-    if (processedFilters.endDate) {
-      processedFilters.endDate = new Date(processedFilters.endDate);
-    }
+    const processedFilters = {
+      ...filters,
+      startDate: filters.startDate ? new Date(filters.startDate) : undefined,
+      endDate: filters.endDate ? new Date(filters.endDate) : undefined,
+    };
     return this.notificationService.getNotifications(processedFilters.userId, processedFilters);
   }
 
@@ -182,13 +180,11 @@ export class NotificationController {
     } = {}
   ) {
     // Convert string dates to Date objects if provided
-    const processedFilters = { ...filters };
-    if (processedFilters.dateStart) {
-      processedFilters.dateStart = new Date(processedFilters.dateStart);
-    }
-    if (processedFilters.dateEnd) {
-      processedFilters.dateEnd = new Date(processedFilters.dateEnd);
-    }
+    const processedFilters = {
+      ...filters,
+      dateStart: filters.dateStart ? new Date(filters.dateStart) : undefined,
+      dateEnd: filters.dateEnd ? new Date(filters.dateEnd) : undefined,
+    };
     return this.notificationService.getAppealAnalytics(processedFilters);
   }
 }

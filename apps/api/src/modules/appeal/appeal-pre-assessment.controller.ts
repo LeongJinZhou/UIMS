@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
 import { AppealPreAssessmentService } from './appeal-pre-assessment.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';

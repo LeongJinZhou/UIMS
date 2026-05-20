@@ -1,8 +1,10 @@
 import React from 'react';
-import { Card, Table, Badge, Tag, Spin, Input, Button, Popconfirm } from 'antd';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 
 interface Room {
   id: string;
@@ -23,19 +25,19 @@ interface Room {
 
 interface Booking {
   id: string;
-  date: string; // ISO date string
-  startTime: string; // HH:MM format
-  endTime: string; // HH:MM format
+  date: string;
+  startTime: string;
+  endTime: string;
   purpose: string;
   bookedBy: string;
-  bookedAt: string; // ISO date string
+  bookedAt: string;
   status: string;
   room: Room;
 }
 
 const VenueBookingView: React.FC = () => {
   const queryClient = useQueryClient();
-  const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]); // Today's date
+  const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]);
   const [roomId, setRoomId] = React.useState<string | null>(null);
 
   const { data: rooms, isLoading: roomsLoading } = useQuery({
@@ -67,151 +69,136 @@ const VenueBookingView: React.FC = () => {
     },
   });
 
-  if (roomsLoading) return <Spin tip="Loading rooms..." />;
-  if (bookingsLoading) return <Spin tip="Loading bookings..." />;
+  if (roomsLoading) return <div className="p-6">Loading rooms...</div>;
 
-  const handleDateChange = (dateValue: Date) => {
-    setDate(dateValue.toISOString().split('T')[0]);
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDate(e.target.value);
   };
 
-  const handleRoomChange = (value: string) => {
-    setRoomId(value);
+  const handleRoomChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setRoomId(e.target.value || null);
+  };
+
+  // Generate time slots 8:00–18:00
+  const generateTimeSlots = () => {
+    const slots = [];
+    for (let hour = 8; hour < 18; hour++) {
+      const startTime = `${hour.toString().padStart(2, '0')}:00`;
+      const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
+      const booking = (bookings || []).find(
+        (b: Booking) => b.startTime === startTime && b.endTime === endTime
+      );
+      slots.push({ startTime, endTime, booking });
+    }
+    return slots;
   };
 
   return (
-    <Card title="Venue Booking Calendar" bordered={false}>
-      <div style={{ marginBottom: '16px', display: 'flex', gap: '16px', alignItems: 'end' }}>
-        <div style={{ flex: 1 }}>
-          <label>Date</label>
-          <Input
-            type="date"
-            value={date}
-            onChange={e => handleDateChange(new Date(e.target.value))}
-          />
+    <Card>
+      <CardHeader>
+        <CardTitle>Venue Booking Calendar</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-4 items-end flex-wrap">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-sm font-medium mb-1">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={handleDateChange}
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:border-primary focus:ring-primary"
+            />
+          </div>
+          <div className="flex-[2] min-w-[250px]">
+            <label className="block text-sm font-medium mb-1">Room</label>
+            <select
+              value={roomId || ''}
+              onChange={handleRoomChange}
+              className="w-full px-3 py-2 border border-input rounded-md shadow-sm focus:border-primary focus:ring-primary"
+            >
+              <option value="">Select a room</option>
+              {rooms?.map((room: Room) => (
+                <option key={room.id} value={room.id}>
+                  {room.code} - {room.name} ({room.venue.building} Floor {room.venue.floor})
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button onClick={() => refetchBookings()}>Refresh</Button>
         </div>
-        <div style={{ flex: 2 }}>
-          <label>Room</label>
-          <select
-            value={roomId || ''}
-            onChange={e => handleRoomChange(e.target.value)}
-          >
-            <option value="">Select a room</option>
-            {rooms?.map(room => (
-              <option key={room.id} value={room.id}>
-                {room.code} - {room.name} ({room.venue.building} Floor {room.venue.floor})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Button type="primary" onClick={() => refetchBookings()}>
-            Refresh
-          </Button>
-        </div>
-      </div>
 
-      {!roomId ? (
-        <div>Please select a room to view its booking calendar</div>
-      ) : (
-        <Table
-          columns={[
-            {
-              title: 'Time',
-              dataIndex: 'timeSlot',
-              key: 'timeSlot',
-              width: 150,
-            },
-            {
-              title: 'Booking Details',
-              dataIndex: 'details',
-              key: 'details',
-            },
-            {
-              title: 'Purpose',
-              dataIndex: 'purpose',
-              key: 'purpose',
-            },
-            {
-              title: 'Booked By',
-              dataIndex: 'bookedBy',
-              key: 'bookedBy',
-            },
-            {
-              title: 'Status',
-              dataIndex: 'status',
-              key: 'status',
-            },
-            {
-              title: 'Actions',
-              dataIndex: 'actions',
-              key: 'actions',
-              width: 100,
-            },
-          ]}
-          dataSource={generateTimeSlots(bookings || [])}
-          pagination={false}
-        />
-      )}
+        {!roomId ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Please select a room to view its booking calendar
+          </div>
+        ) : bookingsLoading ? (
+          <div className="text-center py-8">Loading bookings...</div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[150px]">Time</TableHead>
+                <TableHead>Details</TableHead>
+                <TableHead>Purpose</TableHead>
+                <TableHead>Booked By</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {generateTimeSlots().map(({ startTime, endTime, booking }) => (
+                <TableRow key={startTime}>
+                  <TableCell className="font-mono">{startTime} - {endTime}</TableCell>
+                  <TableCell>
+                    {booking ? (
+                      <div>
+                        <div className="font-semibold">{booking.room.code}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Capacity: {booking.room.capacity}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Available</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{booking?.purpose || '-'}</TableCell>
+                  <TableCell>{booking?.bookedBy || '-'}</TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        booking?.status === 'CONFIRMED' ? 'default' :
+                        booking?.status === 'CANCELLED' ? 'destructive' :
+                        !booking ? 'secondary' : 'outline'
+                      }
+                    >
+                      {booking?.status || 'Available'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {booking ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm('Cancel this booking?')) {
+                            cancelBooking(booking.id);
+                          }
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm">Book</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
     </Card>
   );
 };
-
-// Generate standard time slots (8:00-18:00 in 1-hour blocks)
-function generateTimeSlots(bookings: Booking[]) {
-  const slots = [];
-  for (let hour = 8; hour < 18; hour++) {
-    const startTime = `${hour.toString().padStart(2, '0')}:00`;
-    const endTime = `${(hour + 1).toString().padStart(2, '0')}:00`;
-
-    // Find booking for this time slot
-    const booking = bookings.find(b =>
-      b.startTime === startTime && b.endTime === endTime
-    );
-
-    slots.push({
-      timeSlot: `${startTime} - ${endTime}`,
-      details: booking ? (
-        <div>
-          <div style={{ fontWeight: 'bold' }}>{booking.room.code}</div>
-          <div>Capacity: {booking.room.capacity}</div>
-          <div>
-            Equipment: {booking.room.equipment.map(e => `${e.type} (${e.quantity})`).join(', ')}
-          </div>
-        </div>
-      ) : (
-        <div>Available</div>
-      ),
-      purpose: booking?.purpose || '-',
-      bookedBy: booking?.bookedBy || '-',
-      status: booking?.status ? (
-        <Badge
-          status={booking.status === 'CONFIRMED' ? 'success' :
-                   booking.status === 'CANCELLED' ? 'error' : 'warning'}
-        >
-          {booking.status}
-        </Badge>
-      ) : (
-        <Badge status="success">Available</Badge>
-      ),
-      actions: booking ? (
-        <Popconfirm
-          title="Are you sure you want to cancel this booking?"
-          onConfirm={() => cancelBooking(booking.id)}
-          okText="Yes"
-          cancelText="No"
-        >
-          <Button size="small" danger>
-            <DeleteOutlined />
-          </Button>
-        </Popconfirm>
-      ) : (
-        <Button size="small" type="primary">
-          <PlusOutlined /> Book
-        </Button>
-      ),
-    });
-  }
-  return slots;
-}
 
 export default VenueBookingView;
